@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <title>Out For Delivery</title>
+
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+<link rel="icon" type="image/png" sizes="16x16" href="../favicon.png">
+<link rel="apple-touch-icon" href="../favicon.png">
 <script src="https://cdn.tailwindcss.com"></script>
 
 <script type="module" src="js/ofd-alert-engine.js"></script>
@@ -287,7 +291,15 @@ window.handleRemarkEnter=(e,awb)=>{
 </head>
 
 <body class="bg-slate-900 text-white p-6">
+<header class="bg-indigo-800 text-white p-4 flex justify-between items-center">
+
 <h1 class="text-2xl font-bold mb-4">Out For Delivery</h1>
+<button
+    onclick="location.href='telecaller-dashboard.html'"
+    class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded">
+    Back
+  </button>
+</header>
 
 <div id="ofdContainer"></div>
 
