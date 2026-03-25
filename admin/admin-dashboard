@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Dashboard</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase (same config file you already use) -->
+  <script type="module">
+    import { db } from "../firebase/firebase-config.js";
+    import {
+      ref,
+      onValue,
+      get,
+      set,
+      update
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    const container = document.getElementById("adminOrders");
+
+    /* =========================
+       STATUS COLOR HELPERS
+    ========================= */
+    function getStatusBorder(status) {
+      if (!status) return "border-gray-500";
+
+      status = status.toUpperCase();
+
+      if (status.includes("DELIVER")) return "border-green-500";
+      if (status.includes("CANCEL")) return "border-red-500";
+      if (status.includes("OUT")) return "border-orange-400";
+      if (status.includes("PENDING")) return "border-yellow-400";
+      if (status.includes("TRANSIT")) return "border-blue-400";
+
+      return "border-gray-500";
+    }
+
+    function getStatusText(status) {
+      if (!status) return "text-gray-300";
+      status = status.toUpperCase();
+
+      if (status.includes("DELIVER")) return "text-green-400";
+      if (status.includes("CANCEL")) return "text-red-400";
+      if (status.includes("OUT")) return "text-orange-300";
+      if (status.includes("PENDING")) return "text-yellow-300";
+      if (status.includes("TRANSIT")) return "text-blue-300";
+
+      return "text-gray-300";
+    }
+
+    /* =========================
+       ADMIN REALTIME RENDER
+    ========================= */
+    function renderAdminDashboard() {
+      onValue(ref(db, "Telecallers"), (snap) => {
+        const telecallers = snap.val() || {};
+        let html = "";
+
+        Object.entries(telecallers).forEach(([emailKey, tcData]) => {
+          const ordersRoot = tcData.Orders || {};
+          let allOrders = [];
+
+          Object.values(ordersRoot).forEach(group => {
+            Object.values(group).forEach(order => {
+              allOrders.push(order);
+            });
+          });
+
+          if (!allOrders.length) return;
+
+          allOrders.sort((a, b) => b.createdAt - a.createdAt);
+
+          const groupedByDate = {};
+
+          allOrders.forEach(o => {
+            const d = new Date(o.createdAt);
+            const key =
+              String(d.getDate()).padStart(2, "0") +
+              "/" +
+              String(d.getMonth() + 1).padStart(2, "0") +
+              "/" +
+              d.getFullYear();
+
+            if (!groupedByDate[key]) groupedByDate[key] = [];
+            groupedByDate[key].push(o);
+          });
+
+          html += `
+            <div class="bg-black/40 p-5 rounded-xl mb-6 border border-gray-700">
+              <div class="text-xl font-bold text-blue-400 mb-4">
+                Telecaller: ${emailKey.split('_')[0].toUpperCase()}
+              </div>
+          `;
+
+          Object.entries(groupedByDate).forEach(([date, orders]) => {
+            html += `
+              <div class="mb-4">
+                <div class="text-lg font-semibold text-purple-300 mb-2">
+                  📅 ${date}
+                </div>
+            `;
+
+            orders.forEach(o => {
+              html += `
+                <div class="bg-white/10 p-3 mb-2 rounded-lg border-2 ${getStatusBorder(o.status)}">
+                  <div class="font-semibold">${o.name}</div>
+                  <div class="text-sm">📞 ${o.phone}</div>
+                  <div class="text-sm ${getStatusText(o.status)}">
+                    Status: ${o.status || "N/A"}
+                  </div>
+                  <div class="text-sm">AWB: ${o.awb || "-"}</div>
+                  <div class="text-sm">Order ID: ${o.orderId}</div>
+                </div>
+              `;
+            });
+
+            html += `</div>`;
+          });
+
+          html += `</div>`;
+        });
+
+        container.innerHTML = html || "<p>No orders found</p>";
+      });
+    }
+
+    renderAdminDashboard();
+
+    let isFetching = false;
+
+async function fetchAndStoreWaybills() {
+
+  if (isFetching) {
+    alert("Already fetching, please wait...");
+    return;
+  }
+
+  const input = prompt("Enter number of waybills to fetch (max 10000):", "200");
+
+  if (!input) return;
+
+  const count = Number(input);
+
+  if (!count || count <= 0 || count > 10000) {
+    alert("Enter valid number (1 - 10000)");
+    return;
+  }
+
+  isFetching = true;
+
+  try {
+
+    const res = await fetch(
+      "https://shreejee-delhivery-proxy.deno.dev/fetch-waybills",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ count })
+      }
+    );
+
+    let data;
+
+    try {
+      data = await res.json();
+    } catch (e) {
+      const text = await res.text();
+      console.error("Invalid response:", text);
+      alert("Server error: " + text);
+      return;
+    }
+
+    const waybills = data?.waybills || [];
+
+    if (!waybills.length) {
+      alert("No waybills received");
+      return;
+    }
+
+    const now = Date.now();
+
+    // ✅ SAFE WRITE (no crash)
+    for (const awb of waybills) {
+
+      if (!awb) continue;
+
+      await set(
+        ref(db, `Waybills/unused/${awb}`),
+        {
+          fetchedAt: now,
+          used: false
+        }
+      );
+    }
+
+    alert(`✅ ${waybills.length} waybills added successfully`);
+
+  } catch (err) {
+    console.error(err);
+    alert("Error fetching waybills");
+  } finally {
+    isFetching = false;
+  }
+}
+
+window.fetchAndStoreWaybills = fetchAndStoreWaybills;
+
+async function loadWaybillCount() {
+
+  try {
+    const snap = await get(ref(db, "Waybills/unused"));
+
+    const data = snap.val() || {};
+
+    const count = Object.keys(data).length;
+
+    document.getElementById("waybillCount").innerText = count;
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("waybillCount").innerText = "Error";
+  }
+}loadWaybillCount();
+
+    function logout(){ localStorage.clear(); location.href="../index.html"; }
+    window.logout = logout;
+  </script>
+</head>
+
+<body class="bg-gray-900 text-white p-6">
+
+  <div class="max-w-6xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold text-blue-400">
+        Admin Dashboard
+      </h1>
+
+      <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">
+        Logout
+      </button>
+    </div>
+
+    <div class="bg-black/40 p-4 rounded-lg mb-6 flex justify-between items-center border border-gray-700">
+
+  <div class="text-lg">
+    📦 Available Waybills:
+    <span id="waybillCount" class="text-green-400 font-bold">0</span>
+  </div>
+
+  <button onclick="fetchAndStoreWaybills()"
+    class="bg-green-600 px-4 py-2 rounded shadow-lg">
+    ➕ Add Waybill
+  </button>
+
+</div>
+
+    <div id="adminOrders"></div>
+  </div>
+
+</body>
+
+</html>
