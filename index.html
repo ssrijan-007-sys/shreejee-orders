@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ShreeJee Ayucare – Login</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb, #3b82f6, #93c5fd);
+      background-size: 400% 400%;
+      animation: bgShift 10s ease infinite;
+      font-family: 'Poppins', sans-serif;
+    }
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .glow-input:focus {
+      outline: none;
+      box-shadow: 0 0 10px rgba(59,130,246,0.6);
+      border-color: #3b82f6;
+    }
+  </style>
+</head>
+
+<body class="flex items-center justify-center h-screen text-white">
+
+  <div class="glass rounded-2xl p-8 w-full max-w-sm text-center">
+    <img src="assets/Logo.png" alt="Logo" class="mx-auto h-20 w-20 rounded-full mb-3 shadow-lg object-cover" onerror="this.style.display='none'">
+    <h1 class="text-2xl font-bold mb-1">ShreeJee Ayucare</h1>
+    <p class="text-blue-100 mb-6 text-sm">Order Management Portal</p>
+
+    <form id="loginForm" class="space-y-5">
+      <input
+        type="text"
+        id="loginEmail"
+        placeholder="Email"
+        class="glow-input w-full border rounded-lg p-3 bg-white/80 text-gray-800"
+        required
+      >
+
+      <div class="relative">
+        <input
+          type="password"
+          id="loginPassword"
+          placeholder="Password"
+          class="glow-input w-full border rounded-lg p-3 bg-white/80 text-gray-800 pr-12"
+          required
+        >
+        <button
+          type="button"
+          id="togglePassword"
+          class="absolute right-3 top-3 text-gray-600 text-xl"
+        >👁️</button>
+      </div>
+
+      <button
+        type="submit"
+        id="loginBtn"
+        class="w-full py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 font-semibold text-lg hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Login
+      </button>
+    </form>
+
+    <p id="loginError" class="text-red-200 text-sm mt-4 hidden">
+      Invalid email or password
+    </p>
+  </div>
+
+
+
+  <script type="module">
+
+// ============================
+// USER DATABASE
+// ============================
+const users = [
+  { email: "jatin@shreejee.com", password: "Jatin@123", name: "Jatin", role: "telecaller" },
+  { email: "himanshi@shreejee.com", password: "Himanshi@123", name: "Himanshi", role: "telecaller" },
+  { email: "shalu@shreejee.com", password: "Shalu@123", name: "Shalu", role: "telecaller" },
+  { email: "priyanshu@shreejee.com", password: "Priyanshu@123", name: "Priyanshu", role: "telecaller" },
+  { email: "srijanmishra2504@gmail.com", password: "srijan07", name: "Srijan", role: "admin" },
+  { email: "jatinkushwaha.2003@gmail.com", password: "Jatin@1.", name: "Jatin", role: "admin" }
+];
+
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+const togglePassword = document.getElementById("togglePassword");
+const passwordInput = document.getElementById("loginPassword");
+
+// ============================
+// SHOW / HIDE PASSWORD
+// ============================
+togglePassword.addEventListener("click", () => {
+  passwordInput.type = passwordInput.type === "password" ? "text" : "password";
+  togglePassword.textContent = passwordInput.type === "text" ? "🙈" : "👁️";
+});
+
+// ============================
+// LOGIN LOGIC
+// ============================
+loginForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value.trim();
+
+  const user = users.find(u => u.email === email && u.password === password);
+
+  if (!user) {
+    loginError.classList.remove("hidden");
+    return;
+  }
+
+  // store user session
+  localStorage.setItem("authUser", JSON.stringify({
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    loginTime: Date.now()
+  }));
+
+  // redirect by role
+  if (user.role === "admin") {
+    window.location.href = "admin/admin-dashboard.html";
+  } else {
+    window.location.href = "telecaller/telecaller-dashboard.html";
+  }
+});
+
+// ============================
+// AUTO LOGIN CHECK
+// ============================
+const authUser = localStorage.getItem("authUser");
+
+if (authUser) {
+  try {
+    const user = JSON.parse(authUser);
+
+    if (user.role === "admin") {
+      window.location.href = "admin/admin-dashboard.html";
+    } else {
+      window.location.href = "telecaller/telecaller-dashboard.html";
+    }
+
+  } catch (err) {
+    localStorage.removeItem("authUser");
+  }
+}
+
+</script>
+</body>
+</html>
