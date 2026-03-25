@@ -1,0 +1,258 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Scheduled Orders</title>
+
+<header class="flex justify-between items-center mb-6">
+<h1 class="text-2xl font-bold">📅 Scheduled Orders</h1>
+
+<button
+onclick="location.href='telecaller-dashboard.html'"
+class="bg-blue-600 px-4 py-2 rounded">
+⬅ Back to Dashboard
+</button>
+</header>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script type="module">
+import { db, ref, onValue, get, remove, set } from "../firebase/firebase-config.js";
+
+const authUser = JSON.parse(localStorage.getItem("authUser"));
+if (!authUser) location.href="../index.html";
+
+const emailKey = authUser.email.replace(/[.@]/g,"_");
+
+const container = document.getElementById("scheduledContainer");
+
+let editingId=null;
+/* LOAD SCHEDULED ORDERS */
+
+onValue(ref(db, `Telecallers/${emailKey}/ScheduledOrders`), snap => {
+
+  const data = snap.val() || {};
+
+  if (!Object.keys(data).length) {
+    container.innerHTML = "<div>No scheduled orders</div>";
+    return;
+  }
+
+  container.innerHTML = "";
+
+  Object.entries(data).forEach(([orderId,o]) => {
+
+    const date = new Date(o.scheduleDate).toLocaleDateString();
+
+    const div = document.createElement("div");
+
+    div.className = "bg-white text-black p-4 rounded mb-3";
+
+    div.innerHTML = `
+      <div class="font-bold">${o.name}</div>
+      <div>${o.phone}</div>
+      <div>₹ ${o.amount}</div>
+      <div>📅 ${date}</div>
+
+      <div class="flex gap-2 mt-2">
+
+        <button onclick="placeNow('${orderId}')"
+        class="bg-green-600 text-white px-3 py-1 rounded">
+        Place Now
+        </button>
+
+    
+
+        <button onclick="cancelSchedule('${orderId}')"
+        class="bg-red-600 text-white px-3 py-1 rounded">
+        Cancel
+        </button>
+
+      </div>
+    `;
+
+    container.appendChild(div);
+
+  });
+
+});
+
+
+/* CANCEL */
+
+window.cancelSchedule = async (orderId) => {
+
+  if(!confirm("Cancel this scheduled order?")) return;
+
+  await remove(ref(db,`Telecallers/${emailKey}/ScheduledOrders/${orderId}`));
+
+};
+
+
+/* PLACE NOW */
+
+window.placeNow = async (orderId) => {
+
+  const snap = await get(
+    ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`)
+  );
+
+  const order = snap.val();
+  if (!order) return;
+
+  try {
+
+    const awb = await getWaybill();
+
+    const phoneKey = order.phone;
+
+    const newOrder = {
+      orderId,
+      awb,
+      name: order.name,
+      phone: order.phone,
+      pin: order.pin,
+      city: order.city,
+      state: order.state,
+      address: order.address,
+      amount: order.amount,
+      quantity: order.quantity || 1,
+      paymentMode: order.paymentMode,
+      status: "AWB GENERATED",
+      createdAt: Date.now(),
+      trackable: true,
+      lastTrackedAt: 0
+    };
+
+    await set(
+      ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`),
+      newOrder
+    );
+
+    await set(ref(db, `TrackingQueues/normal/${awb}`), true);
+
+    const payload = {
+      shipments: [{
+        name: order.name,
+        phone: order.phone,
+        add: order.address,
+        pin: order.pin,
+        order: orderId,
+        payment_mode: order.paymentMode,
+        cod_amount: order.paymentMode === "COD"
+          ? Number(order.amount)
+          : 0,
+        quantity: order.quantity || 1,
+        waybill: awb,
+        shipment_width: "10",
+        shipment_height: "10",
+        shipment_length: 10 * (order.quantity || 1),
+        weight: 300 * (order.quantity || 1),
+        products_desc: "Sugar Medicine",
+        shipping_mode: "Surface",
+        return_phone: 8449957169
+      }],
+      pickup_location: { name: "Jatin Home" }
+    };
+
+    const res = await fetch(
+      "https://shreejee-delhivery-proxy.deno.dev/create-order",
+      {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result = await res.json();
+
+    if (result?.success === false) {
+
+      await set(
+        ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/status`),
+        "PENDING"
+      );
+
+      await set(
+        ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/trackable`),
+        false
+      );
+
+      showCustomAlert("Manifest failed. Order set to PENDING.");
+
+    }
+
+    await remove(
+      ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`)
+    );
+
+    showCustomAlert("Order placed successfully!");
+
+  } catch (err) {
+    console.error(err);
+  }
+
+};
+
+async function getWaybill() {
+
+  const snap = await get(ref(db, "Waybills/unused"));
+  const data = snap.val() || {};
+
+  for (const awb in data) {
+
+    await remove(ref(db, `Waybills/unused/${awb}`));
+
+    await set(ref(db, `Waybills/used/${awb}`), {
+      usedAt: Date.now(),
+      telecaller: authUser.email
+    });
+
+    return awb;
+  }
+
+  throw new Error("No waybill available");
+
+}
+
+function showCustomAlert(message) {
+  document.getElementById("customAlertMessage").innerText = message;
+  document.getElementById("customAlert").classList.remove("hidden");
+}
+
+function closeCustomAlert() {
+  document.getElementById("customAlert").classList.add("hidden");
+}
+
+
+window.showCustomAlert = showCustomAlert;
+window.closeCustomAlert = closeCustomAlert;
+
+</script>
+</head>
+
+
+<body class="bg-slate-900 text-white p-6">
+
+
+<div id="scheduledContainer"></div>
+<!-- CUSTOM ALERT MODAL -->
+<div id="customAlert"
+  class="hidden fixed inset-0 bg-black/60 flex justify-center items-center z-50">
+
+  <div class="bg-white text-black p-6 rounded w-full max-w-md shadow-lg relative">
+
+    <div id="customAlertMessage" class="mb-6 text-sm"></div>
+
+    <div class="flex justify-end">
+      <button onclick="closeCustomAlert()"
+        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+</body>
+</html>

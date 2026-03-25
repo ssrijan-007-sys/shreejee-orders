@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+
+<title>Re-Order Customers</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script type="module">
+import { db, ref, get, set } from "../firebase/firebase-config.js";
+
+/* ================= AUTH ================= */
+
+const authUser = JSON.parse(localStorage.getItem("authUser"));
+
+if (!authUser || authUser.role !== "telecaller") {
+  location.href = "../index.html";
+}
+
+const emailKey = authUser.email.replace(/[.@]/g, "_");
+
+/* ================= LOAD REORDER DATA ================= */
+
+async function loadReorders(){
+
+  const snap = await get(
+    ref(db, `Telecallers/${emailKey}/Delivered`)
+  );
+
+  const data = snap.val() || {};
+
+  const container = document.getElementById("reorderContainer");
+
+  const now = Date.now();
+  const days35 = 35 * 24 * 60 * 60 * 1000;
+
+  let html = "";
+
+  Object.values(data).forEach(phoneGroup => {
+
+    Object.values(phoneGroup).forEach(order => {
+
+      if(!order.deliveredAt) return;
+
+      const diff = now - order.deliveredAt;
+
+      if(diff < days35) return;
+
+      const daysAgo = Math.floor(diff / (1000*60*60*24));
+
+      html += `
+      
+      <div class="bg-white shadow rounded p-5 mb-4">
+
+        <div class="font-semibold text-blue-600 text-lg">
+          ${order.name} -
+        </div>
+
+        <div class="text-gray-700 mt-1">
+          📞 ${order.phone}
+        </div>
+
+        <div class="text-gray-600 text-sm mt-1">
+          ⏱ Last delivered ${daysAgo} days ago
+        </div>
+
+        <div class="text-gray-600 text-sm mt-1">
+          📝 Last Remark:
+          <span id="lastRemark_${order.orderId}">
+            ${order.remark || "-"}
+          </span>
+        </div>
+
+        <textarea
+          id="remark_${order.orderId}"
+          placeholder="Add reorder remark..."
+          class="w-full border rounded mt-3 p-2"></textarea>
+
+        <div class="flex gap-3 mt-3">
+
+          <button
+            onclick="saveRemark('${order.phone}','${order.orderId}')"
+            class="bg-indigo-500 text-white px-4 py-1 rounded">
+            Save Remark
+          </button>
+
+          <button
+            onclick="viewCustomer('${order.phone}')"
+            class="bg-blue-500 text-white px-4 py-1 rounded">
+            View
+          </button>
+
+          <button
+            onclick="reorderCustomer('${order.phone}','${order.orderId}')"
+            class="bg-green-600 text-white px-4 py-1 rounded">
+            Re-Order
+          </button>
+
+          <button
+            onclick="markNotInterested('${order.phone}','${order.orderId}')"
+            class="bg-red-600 text-white px-4 py-1 rounded">
+            Not Interested
+          </button>
+
+        </div>
+
+      </div>
+      
+      `;
+
+    });
+
+  });
+
+  if(!html){
+    html = `<p class="text-gray-600">No reorder customers found.</p>`;
+  }
+
+  container.innerHTML = html;
+
+}
+
+/* ================= SAVE REMARK ================= */
+
+window.saveRemark = async (phone, orderId) => {
+
+  const remarkInput = document.getElementById(`remark_${orderId}`);
+  const remark = remarkInput.value.trim();
+
+  if (!remark) return alert("Enter remark");
+
+  const timestamp = Date.now();
+
+  await set(
+    ref(db, `Telecallers/${emailKey}/Delivered/${phone}/${orderId}/remarks/${timestamp}`),
+    remark
+  );
+
+  remarkInput.value = "";
+
+  loadReorders(); // refresh UI
+};
+
+/* ================= VIEW CUSTOMER ================= */
+
+window.viewCustomer = async(phone)=>{
+
+  const snap = await get(
+    ref(db,`Telecallers/${emailKey}/Delivered/${phone}`)
+  );
+
+  const orders = snap.val() || {};
+
+  const list = Object.values(orders).sort(
+    (a,b)=>b.createdAt-a.createdAt
+  );
+
+  if(!list.length) return;
+
+  const customer = list[0];
+
+  // BASIC DETAILS
+  document.getElementById("viewName").innerText = customer.name;
+  document.getElementById("viewPhone").innerText = customer.phone;
+  document.getElementById("viewPin").innerText = customer.pin;
+  document.getElementById("viewAddress").innerText = customer.address;
+
+  /* ================= REMARKS ================= */
+
+  let allRemarks = [];
+
+list.forEach(o => {
+  if (o.remarks) {
+    Object.entries(o.remarks).forEach(([time, text]) => {
+      allRemarks.push({
+        time: Number(time),
+        text
+      });
+    });
+  }
+});
+
+// 🔥 sort latest first
+allRemarks.sort((a, b) => b.time - a.time);
+
+// ✅ render
+const remarksHTML = allRemarks.map(r => `
+  <div class="border-b py-1 text-sm">
+    <div>🕒 ${new Date(r.time).toLocaleString()}</div>
+    <div>📝 ${r.text}</div>
+  </div>
+`).join("");
+
+document.getElementById("remarksHistory").innerHTML =
+  remarksHTML || "<span class='text-gray-500'>No remarks</span>";
+
+// ✅ latest remark
+document.getElementById("latestRemark").innerText =
+  allRemarks[0]?.text || "-";
+
+  /* ================= ORDER HISTORY ================= */
+
+  const historyHTML = list.map(o => {
+
+  const orderDate = new Date(o.createdAt).toLocaleString();
+  const deliveredDate = o.deliveredAt
+    ? new Date(o.deliveredAt).toLocaleString()
+    : "-";
+
+  // ✅ GET REMARKS
+  let remarksHTML = "No remarks";
+
+  if (o.remarks) {
+    const sortedRemarks = Object.entries(o.remarks)
+      .sort((a, b) => b[0] - a[0]); // latest first
+
+    remarksHTML = sortedRemarks.map(([time, text]) => {
+      return `
+        <div class="text-sm border-b py-1">
+          <div>🕒 ${new Date(Number(time)).toLocaleString()}</div>
+          <div>📝 ${text}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  return `
+    <div class="border rounded p-4 mb-3 bg-gray-50">
+
+      <div><b>Status:</b> closed Delivered</div>
+      <div><b>Order Date:</b> ${orderDate}</div>
+      <div><b>Delivered At:</b> ${deliveredDate}</div>
+      <div><b>Amount:</b> ₹${o.amount}</div>
+
+    
+
+    </div>
+  `;
+}).join("");
+
+  document.getElementById("orderHistory").innerHTML = historyHTML;
+
+  document.getElementById("viewModal").classList.remove("hidden");
+};
+
+/* ================= REORDER ================= */
+
+window.reorderCustomer = async (phone, orderId) => {
+
+  const snap = await get(
+    ref(db, `Telecallers/${emailKey}/Delivered/${phone}/${orderId}`)
+  );
+
+  const order = snap.val();
+  if (!order) return;
+
+  document.getElementById("name").value = order.name || "";
+  document.getElementById("phone").value = order.phone || "";
+  document.getElementById("pin").value = order.pin || "";
+  document.getElementById("city").value = order.city || "";
+  document.getElementById("state").value = order.state || "";
+  document.getElementById("address").value = order.address || "";
+  document.getElementById("quantity").value = order.quantity || 1;
+  document.getElementById("orderAmount").value = order.amount || "";
+  document.getElementById("paymentMode").value = order.paymentMode || "COD";
+
+  document.getElementById("orderModal").classList.remove("hidden");
+};
+
+/* ================= NOT INTERESTED ================= */
+
+window.markNotInterested = async(phone,orderId)=>{
+
+  if(!confirm("Mark as Not Interested?")) return;
+
+  await set(
+    ref(db,`Telecallers/${emailKey}/Delivered/${phone}/${orderId}/notInterested`),
+    true
+  );
+
+  loadReorders();
+
+};
+
+window.onload = loadReorders;
+
+
+function closeOrderModal(){
+  document.getElementById("orderModal").classList.add("hidden");
+}
+window.closeOrderModal = closeOrderModal;
+
+
+async function getWaybill() {
+
+  const snap = await get(ref(db, "Waybills/unused"));
+  const data = snap.val() || {};
+
+  for (const awb in data) {
+
+    // ✅ REMOVE from unused FIRST
+    await set(ref(db, `Waybills/unused/${awb}`), null);
+
+    // ✅ MOVE to used
+    await set(ref(db, `Waybills/used/${awb}`), {
+      usedAt: Date.now(),
+      telecaller: authUser.email
+    });
+
+    return awb;
+  }
+
+  throw new Error("No waybill available");
+}
+
+
+async function saveOrder(assignAwb){
+
+  const v = id => document.getElementById(id).value.trim();
+
+  if (![v("name"),v("phone"),v("pin"),v("address"),v("orderAmount")].every(Boolean)) {
+    return alert("All fields required");
+  }
+
+  let awb = null;
+  let status = "PENDING";
+
+  if(assignAwb){
+    awb = await getWaybill();
+    status = "AWB GENERATED";
+  }
+
+  const orderId = "SJ" + Date.now();
+  const phoneKey = v("phone");
+
+  const order = {
+    orderId,
+    awb,
+    name: v("name"),
+    phone: phoneKey,
+    pin: v("pin"),
+    city: v("city"),
+    state: v("state"),
+    address: v("address"),
+    amount: v("orderAmount"),
+    quantity: v("quantity") || 1,
+    paymentMode: paymentMode.value,
+    status,
+    createdAt: Date.now(),
+    trackable: !!awb,
+    lastTrackedAt: 0
+  };
+
+  await set(
+    ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`),
+    order
+  );
+
+  if(assignAwb){
+
+    const payload = {
+  shipments: [{
+    name: order.name,
+    phone: order.phone,
+    add: order.address,      // ✅ FIXED
+    pin: order.pin,        // ✅ STRONGLY RECOMMENDED
+    order: order.orderId,
+    payment_mode: order.paymentMode,
+    cod_amount:
+      order.paymentMode === "COD" ? Number(order.amount) : 0,
+    waybill: awb,
+    quantity: order.quantity || 1,
+    shipment_width: "10",    // ✅ OPTIONAL BUT SAFE
+    shipment_height: "10",
+    shipment_length: 10 * (order.quantity || 1),
+    weight: 300 * (order.quantity || 1),
+    products_desc: "Sugar Medicine",
+    shipping_mode: "Surface",
+    return_phone: 8449957169
+  }],
+  pickup_location: {
+    name: "Jatin Home"
+  }
+};
+    const res = await fetch(
+      "https://shreejee-delhivery-proxy.deno.dev/create-order",
+      {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result = await res.json();
+    console.log("Delhivery response:", result);
+
+    if(result?.success === false){
+      alert("Manifest failed");
+    }
+  }
+
+  alert("✅ Order placed");
+  closeOrderModal();
+}
+
+function closeViewModal(){
+  document.getElementById("viewModal").classList.add("hidden");
+}
+
+window.closeViewModal = closeViewModal;
+window.saveOrder = saveOrder;
+
+</script>
+
+</head>
+
+<body class="bg-gray-200">
+
+<!-- HEADER -->
+
+<header class="bg-indigo-800 text-white p-4 flex justify-between items-center">
+
+  <div class="text-xl font-semibold">
+    🔁 Re-Order Customers (35 Days)
+  </div>
+
+  <button
+    onclick="location.href='telecaller-dashboard.html'"
+    class="bg-yellow-500 px-4 py-2 rounded">
+    Back
+  </button>
+
+</header>
+
+
+<!-- CONTENT -->
+
+<div class="max-w-5xl mx-auto mt-6">
+
+  <div id="reorderContainer"></div>
+
+</div>
+
+<!-- VIEW CUSTOMER MODAL -->
+
+<div id="viewModal"
+class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
+
+<div class="bg-white text-black p-6 rounded w-full max-w-3xl relative max-h-[85vh] flex flex-col">
+
+<button
+onclick="closeViewModal()"
+class="absolute top-3 right-4 text-xl font-bold">
+✕
+</button>
+
+<h2 class="text-xl font-bold mb-4 text-indigo-700">
+Customer Details
+</h2>
+
+<!-- ✅ SCROLLABLE CONTENT -->
+<div class="overflow-y-auto pr-2">
+
+<div class="mb-4">
+
+<h3 class="font-semibold mb-2">Customer Information</h3>
+
+<div>Name : <span id="viewName"></span></div>
+<div>Phone : <span id="viewPhone"></span></div>
+<div>Pincode : <span id="viewPin"></span></div>
+<div>Address : <span id="viewAddress"></span></div>
+
+</div>
+
+<hr class="my-4">
+
+<h3 class="font-semibold mb-2">Latest Remark</h3>
+<div id="latestRemark" class="text-sm mb-3 text-gray-700">-</div>
+
+<h3 class="font-semibold mb-2">All Remarks</h3>
+<div id="remarksHistory" class="bg-gray-100 p-3 rounded max-h-40 overflow-y-auto"></div>
+
+<hr class="my-4">
+
+<h3 class="font-semibold mb-3">
+Complete Order History
+</h3>
+
+<div id="orderHistory"></div>
+
+</div> <!-- scroll end -->
+
+</div>
+</div>
+
+<!-- ADD ORDER MODAL -->
+
+<div id="orderModal"
+class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
+
+<div class="bg-white text-black p-6 rounded w-full max-w-lg relative space-y-2">
+
+<button onclick="closeOrderModal()"
+class="absolute top-2 right-2 text-red-600 font-bold">✕</button>
+
+<input id="name" placeholder="Name" class="w-full p-2 border">
+<input id="phone" placeholder="Phone" class="w-full p-2 border">
+
+<div class="flex gap-2">
+  <input id="pin" placeholder="Pincode" class="w-full p-2 border">
+  <span id="pinStatus"></span>
+</div>
+
+<input id="city" placeholder="City" class="w-full p-2 border bg-gray-200" readonly>
+<input id="state" placeholder="State" class="w-full p-2 border bg-gray-200" readonly>
+
+<input id="address" placeholder="Address" class="w-full p-2 border">
+<input id="quantity" placeholder="Quantity" value="1" class="w-full p-2 border">
+<input id="orderAmount" placeholder="Amount" class="w-full p-2 border">
+
+<select id="paymentMode" class="w-full p-2 border">
+  <option>COD</option>
+  <option>Prepaid</option>
+</select>
+
+<div class="flex gap-2 mt-2">
+  <button onclick="saveOrder(false)" class="bg-gray-600 text-white px-4 py-2">
+    Save
+  </button>
+
+  <button id="awbBtn"
+    onclick="saveOrder(true)"
+    class="bg-green-600 text-white px-4 py-2">
+    Save & Generate AWB
+  </button>
+</div>
+
+</div>
+</div>
+
+</body>
+</html>
