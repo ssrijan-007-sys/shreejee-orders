@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Telecaller Dashboard</title>
+
+<style>
+.pin-tooltip {
+  position: relative;
+  cursor: pointer;
+}
+.pin-tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  background: black;
+  color: white;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+</style>
+
+<script type="module" src="js/ofd-alert-engine.js"></script>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script type="module">
+import { db, ref, get, set, remove , onValue} from "../firebase/firebase-config.js";
+
+searchInput.addEventListener("input", e => {
+  searchQuery = e.target.value.toLowerCase();
+  renderOrders();
+});
+
+statusFilter.addEventListener("change", e => {
+  selectedStatus = e.target.value;
+  renderOrders();
+});
+
+dateFilter.addEventListener("change", e => {
+  selectedDateRange = e.target.value;
+
+  const showCustom = selectedDateRange === "CUSTOM";
+  fromDate.classList.toggle("hidden", !showCustom);
+  toDate.classList.toggle("hidden", !showCustom);
+
+  renderOrders();
+});
+
+fromDate.addEventListener("change", e => {
+  customFromDate = new Date(e.target.value).getTime();
+  renderOrders();
+});
+
+toDate.addEventListener("change", e => {
+  customToDate = new Date(e.target.value).getTime() + 86400000; // include full day
+  renderOrders();
+});
+
+
+/* ================= AUTH ================= */
+const authUser = JSON.parse(localStorage.getItem("authUser"));
+if (!authUser || authUser.role !== "telecaller") {
+  location.href = "../index.html";
+}
+const emailKey = authUser.email.replace(/[.@]/g, "_");
+
+
+window.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("telecallerName").innerText = authUser.name;
+  });
+
+await set(ref(db, `Telecallers/${emailKey}/Name`), authUser.name);
+
+
+
+
+
+/* ================= STATE ================= */
+let isServiceable = false;
+
+/* ================= PINCODE ================= */
+async function checkServiceability(pinCode) {
+  try {
+    const res = await fetch(
+      `https://shreejee-delhivery-proxy.deno.dev/serviceability?pin=${pinCode}`
+    );
+
+    const data = await res.json();
+    console.log("Pincode API response:", data);
+
+
+    const pinStatus = document.getElementById("pinStatus");
+    const cityInput = document.getElementById("city");
+    const stateInput = document.getElementById("state");
+
+    if (!data?.delivery_codes?.length) {
+      isServiceable = false;
+      pinStatus.innerHTML = "❌";
+      pinStatus.title = "Not Serviceable";
+      return;
+    }
+
+    const location = data.delivery_codes[0]?.postal_code || {};
+
+isServiceable = true;
+pinStatus.innerHTML = "✔️";
+pinStatus.title = "Serviceable";
+awbBtn.disabled = false;
+
+// City
+cityInput.value = location.city || location.district || "";
+
+// Extract state from inc string
+let state = "";
+
+if (location.inc && location.inc.includes("(")) {
+  state = location.inc.split("(")[1].replace(")", "").trim();
+}
+
+stateInput.value = state;
+
+  } catch (err) {
+    console.error("Serviceability error:", err);
+    isServiceable = false;
+  }
+}
+
+
+/* ================= WAYBILL ================= */
+async function getWaybill() {
+  const snap = await get(ref(db, "Waybills/unused"));
+  const data = snap.val() || {};
+
+  for (const awb in data) {
+    await remove(ref(db, `Waybills/unused/${awb}`));
+    await set(ref(db, `Waybills/used/${awb}`), {
+      usedAt: Date.now(),
+      telecaller: authUser.email
+    });
+    return awb;
+  }
+  throw new Error("No waybill available");
+}
+
+/* ================= SAVE ORDER ================= */
+async function saveOrder(assignAwb) {
+  const v = id => document.getElementById(id).value.trim();
+
+  if (![v("name"),v("phone"),v("pin"),v("address"),v("orderAmount")].every(Boolean)) {
+    showCustomAlert("❌ All fields required");
+    return;
+  }
+
+  if (!/^\d{10}$/.test(v("phone"))) return showCustomAlert("❌ Phone must be 10 digits");
+  if (!/^\d{6}$/.test(v("pin"))) return showCustomAlert("❌ Pincode must be 6 digits");
+
+  let awb = null;
+  let status = "PENDING";
+  const scheduleDate = document.getElementById("scheduleDate").value;
+  const scheduleTimestamp = scheduleDate ? new Date(scheduleDate).setHours(0,0,0,0) : null;
+  const today = new Date().setHours(0,0,0,0);
+
+
+
+  if (scheduleTimestamp && scheduleTimestamp > today) {
+
+  const scheduledOrder = {
+    name: v("name"),
+    phone: v("phone"),
+    pin: v("pin"),
+    city: v("city"),
+    state: v("state"),
+    address: v("address"),
+    amount: v("orderAmount"),
+    quantity: v("quantity") || 1,
+    paymentMode: paymentMode.value,
+    scheduleDate: scheduleTimestamp,
+    createdAt: Date.now()
+  };
+
+  const orderId = "SJ" + Date.now();
+
+  await set(
+    ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`),
+    scheduledOrder
+  );
+
+  showCustomAlert("📅 Order scheduled successfully");
+  clearOrderModal();
+  closeModal();
+  return;
+}
+
+  if (assignAwb) {
+    if (!isServiceable) return showCustomAlert("❌ Not serviceable");
+    awb = await getWaybill();
+    status = "AWB GENERATED";
+  }
+
+  const orderId = "SJ" + Date.now();
+  const phoneKey = v("phone");
+
+  const order = {
+    orderId,
+    awb,
+    name: v("name"),
+    phone: phoneKey,
+    pin: v("pin"),
+    city: v("city"),
+    state: v("state"),
+    address: v("address"),
+    amount: v("orderAmount"),
+    quantity: v("quantity") || 1,
+    paymentMode: paymentMode.value,
+    status,
+    createdAt: Date.now(),
+    trackable: !!awb,
+  lastTrackedAt: 0
+  };
+
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`), order);
+  if (awb) {
+  await set(ref(db, `TrackingQueues/normal/${awb}`), true);
+}
+
+
+  clearOrderModal();
+  closeModal();
+
+
+  if (assignAwb) {
+  const delhiveryPayload = {
+  shipments: [{
+    name: order.name,
+    phone: order.phone,
+    add: order.address,      // ✅ FIXED
+    pin: order.pin,        // ✅ STRONGLY RECOMMENDED
+    order: order.orderId,
+    payment_mode: order.paymentMode,
+    cod_amount:
+      order.paymentMode === "COD" ? Number(order.amount) : 0,
+    waybill: awb,
+    quantity: order.quantity || 1,
+    shipment_width: "10",    // ✅ OPTIONAL BUT SAFE
+    shipment_height: "10",
+    shipment_length: 10 * (order.quantity || 1),
+    weight: 300 * (order.quantity || 1),
+    products_desc: "Sugar Medicine",
+    shipping_mode: "Surface",
+    return_phone: 8449957169
+  }],
+  pickup_location: {
+    name: "Jatin Home"
+  }
+};
+
+
+  const res = await fetch(
+    "https://shreejee-delhivery-proxy.deno.dev/create-order",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delhiveryPayload)
+    }
+  );
+
+  const result = await res.json();
+  console.log("Manifestation response:", result);
+
+  if (result?.success === false) {
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/status`), "PENDING" );
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/trackable`), false);
+  showCustomAlert("❌ Order saved but Manifestation failed. Status set to PENDING. Try after 24 hours.");
+  closeModal();
+  renderOrders();
+  return;
+}
+
+
+}
+
+showCustomAlert("✅ Order Manifested successfully");
+clearOrderModal();
+closeModal();
+renderOrders();
+}
+
+/* ================= VIEW MODAL ================= */
+async function openViewModal(phone) {
+  const snap = await get(ref(db, `Telecallers/${emailKey}/Orders/${phone}`));
+  const orders = snap.val() || {};
+
+  const list = Object.values(orders).sort(
+    (a,b) => b.createdAt - a.createdAt
+  );
+
+  if (!list.length) return;
+
+  const c = list[0];
+  customerDetails.innerHTML = `
+    <div><b>Name:</b> ${c.name}</div>
+    <div><b>Phone:</b> ${c.phone}</div>
+    <div><b>Address:</b> ${c.address}</div>
+    <div><b>City:</b> ${c.city}</div>
+    <div><b>State:</b> ${c.state}</div>
+    <div><b>Pincode:</b> ${c.pin}</div>
+  `;
+
+  customerOrders.innerHTML = list.map(o => {
+    const d = new Date(o.createdAt);
+    const date = `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+
+    return `
+      <div class="bg-white p-3 rounded  ${getStatusBorder(o.status)} ${getStatusGlow(o.status)}">
+        <div class="font-semibold">Order ID: ${o.orderId}</div>
+        <span onclick="openTracking('${o.awb}')"
+              class = ${getStatusColor(o.status)}">
+                  ${o.status}
+                </span>
+
+          ${o.status === "PENDING" ? `
+          <span> <button onclick="retryAwb('${o.phone}', '${o.orderId}')"
+            class="bg-yellow-500 text-black px-2 py-1 rounded text-xs mt-1">
+            Try Again
+          </button> </span>
+          ` : ""}
+          ${o.status === "AWB GENERATED" ? `
+          <span> <button onclick="cancelShipment('${o.phone}', '${o.orderId}')"
+            class="bg-red-600 text-black px-2 py-1 rounded text-xs mt-1">
+            Cancel
+          </button> </span>
+          ` : ""}
+
+        <div>Quantity: ${o.quantity || 1}</div>
+        <div>Amount: ₹${o.amount}</div>
+        <div>Payment: ${o.paymentMode}</div>
+        <div>Date: ${date}</div>
+        ${o.awb ? `<div class="text-green-600">AWB: ${o.awb}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  viewModal.classList.remove("hidden");
+}
+
+function closeViewModal() {
+  viewModal.classList.add("hidden");
+}
+
+window.openViewModal = openViewModal;
+window.closeViewModal = closeViewModal;
+
+let searchQuery = "";
+let selectedStatus = "ALL";
+let selectedDateRange = "LIFETIME";
+let customFromDate = null;
+let customToDate = null;
+
+
+/* ================= RENDER ================= */
+async function renderOrders() {
+  onValue(ref(db, `Telecallers/${emailKey}/Orders`), (snap) => {
+    const data = snap.val() || {};
+
+  // 🔥 1️⃣ Keep only latest order per phone
+  const latestOrdersMap = {};
+
+  Object.values(data).forEach(group => {
+    Object.values(group).forEach(order => {
+      const phone = order.phone;
+
+      if (
+        !latestOrdersMap[phone] ||
+        order.createdAt > latestOrdersMap[phone].createdAt
+      ) {
+        latestOrdersMap[phone] = order;
+      }
+    });
+  });
+
+  let allOrders = Object.values(latestOrdersMap);
+
+  const now = Date.now();
+
+// 🔍 SEARCH FILTER
+allOrders = allOrders.filter(o => {
+  if (!searchQuery) return true;
+  return (
+    o.name?.toLowerCase().includes(searchQuery) ||
+    o.phone?.includes(searchQuery)
+  );
+});
+
+// 🎯 STATUS FILTER
+if (selectedStatus !== "ALL") {
+  allOrders = allOrders.filter(o =>
+    o.status?.toUpperCase().includes(selectedStatus)
+  );
+}
+
+// 📅 DATE FILTER
+allOrders = allOrders.filter(o => {
+  const createdAt = o.createdAt;
+  if (!createdAt) return false;
+
+  switch (selectedDateRange) {
+    case "TODAY":
+      return new Date(createdAt).toDateString() === new Date().toDateString();
+
+    case "LAST_WEEK":
+      return createdAt >= now - 7 * 24 * 60 * 60 * 1000;
+
+    case "THIS_MONTH": {
+      const d = new Date(createdAt);
+      const n = new Date();
+      return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
+    }
+
+    case "LAST_MONTH": {
+      const d = new Date(createdAt);
+      const n = new Date();
+      const lastMonth = new Date(n.getFullYear(), n.getMonth() - 1, 1);
+      return d.getMonth() === lastMonth.getMonth() &&
+             d.getFullYear() === lastMonth.getFullYear();
+    }
+
+    case "CUSTOM":
+      if (!customFromDate || !customToDate) return true;
+      return createdAt >= customFromDate && createdAt <= customToDate;
+
+    default:
+      return true; // LIFETIME
+  }
+});
+
+document.getElementById("ordersTotal").innerText = `Total: ${allOrders.length}`;
+
+  if (!allOrders.length) {
+    ordersContainer.innerHTML = "<p>No orders</p>";
+    return;
+  }
+
+  // 2️⃣ Sort latest first
+  allOrders.sort((a, b) => b.createdAt - a.createdAt);
+
+  // 3️⃣ Group by date
+  const groupedByDate = {};
+
+  allOrders.forEach(o => {
+    const d = new Date(o.createdAt);
+    const dateKey = `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+
+    if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
+    groupedByDate[dateKey].push(o);
+  });
+
+  // 4️⃣ Render UI
+  let html = "";
+
+  Object.entries(groupedByDate).forEach(([date, orders]) => {
+    html += `
+      <div class="bg-black/30 p-4 rounded-lg mb-4">
+        <div class="text-lg font-bold mb-3 text-blue-400">📅 ${date}</div>
+
+        ${orders.map(o => `
+          <div class="bg-white/10 p-3 mb-2 rounded flex justify-between items-center border-2 ${getStatusBorder(o.status)} ${getStatusGlow(o.status)}">
+
+
+
+            <div>
+              <div class="font-semibold">${o.name} | ${o.phone} |  ₹ ${o.amount}</div>
+              <span onclick="openTracking('${o.awb}')"
+                  class="cursor-pointer underline ${getStatusColor(o.status)}">
+                  ${o.status}
+                </span>
+
+
+
+                <div class="flex gap-2 mt-1">
+                  ${o.status === "PENDING" ? `
+                    <button onclick="retryAwb('${o.phone}', '${o.orderId}')"
+                      class="bg-yellow-500 text-black px-2 py-1 rounded text-xs">
+                      Try Again
+                    </button>
+                  ` : ""}
+                  ${o.status === "AWB GENERATED" ? `
+                  <button onclick="editShipment('${o.phone}', '${o.orderId}')"
+                    class="bg-blue-500 text-black px-2 py-1 rounded text-xs"> 
+                    Edit
+                  </button>
+                  `: ""}
+
+                  ${o.status === "AWB GENERATED" ?`
+                  <button onclick="cancelShipment('${o.phone}', '${o.orderId}')"
+                    class="bg-red-600 text-black px-2 py-1 rounded text-xs">
+                    Cancel
+                  </button>
+                  `:""}
+                </div>
+
+
+              ${o.awb ? `<div class="text-green-400 text-sm">AWB: ${o.awb}</div>` : ""}
+              <div class="text-green-400 text-sm">Order ID: ${o.orderId}</div>
+            </div>
+
+            <button onclick='openViewModal("${o.phone}")'
+              class="bg-blue-600 px-3 py-1 rounded text-sm">
+              View
+            </button>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  });
+
+  ordersContainer.innerHTML = html;
+});
+}
+
+function getStatusColor(status) {
+  if (!status) return "text-gray-300";
+
+  status = status.toUpperCase();
+
+  if (status.includes("CANCELLED")) return "text-red-500 font-bold";
+  if (status.includes("DELIVERED")) return "text-green-500 font-bold";
+  if (status.includes("OUT FOR DELIVERY")) return "text-orange-400 font-bold";
+  if (status.includes("PENDING")) return "text-yellow-400 font-bold";
+  if (status.includes("AWB")) return "text-blue-400";
+  if (status.includes("TRANSIT")) return "text-blue-400";
+  if (status.includes("RTO")) return "text-red-500 font-bold";
+
+  return "text-white300";
+}
+
+function getStatusBorder(status) {
+  if (!status) return "border-gray-500";
+
+  status = status.toUpperCase();
+
+  if (status.includes("CANCEL")) return "border-red-500";
+  if (status.includes("DELIVERED")) return "border-green-500";
+  if (status.includes("OUT FOR DELIVERY")) return "border-orange-400";
+  if (status.includes("PENDING")) return "border-yellow-400";
+  if (status.includes("AWB") || status.includes("TRANSIT")) return "border-blue-400";
+  if (status.includes("RTO")) return "border-red-500";
+
+  return "border-white-500";
+}
+
+function getStatusGlow(status) {
+  if (!status) return "";
+
+  status = status.toUpperCase();
+
+  if (status.includes("CANCEL")) return "shadow-[0_0_10px_rgba(239,68,68,0.6)]";
+  if (status.includes("DELIVERED")) return "shadow-[0_0_10px_rgba(34,197,94,0.6)]";
+  if (status.includes("OUT FOR DELIVERY")) return "shadow-[0_0_10px_rgba(251,146,60,0.6)]";
+  if (status.includes("PENDING")) return "shadow-[0_0_10px_rgba(234,179,8,0.6)]";
+  if (status.includes("AWB") || status.includes("TRANSIT")) return "shadow-[0_0_10px_rgba(59,130,246,0.6)]";
+  if (status.includes("RTO")) return "shadow-[0_0_10px_rgba(156,163,175,0.6)]";
+
+  return "shadiow-[0_0_10px_rgba(0,0,0,0.6)]";
+  
+}
+
+
+
+
+
+
+renderOrders();
+
+/* ================= UI ================= */
+function openModal(){ orderModal.classList.remove("hidden"); }
+function closeModal(){ orderModal.classList.add("hidden"); }
+function logout(){ localStorage.clear(); location.href="../index.html"; }
+
+pin.addEventListener("input", e => {
+  if (e.target.value.length === 6) checkServiceability(e.target.value);
+});
+
+window.saveOrder = saveOrder;
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.logout = logout;
+window.openViewModal = openViewModal;
+window.closeViewModal = closeViewModal;
+window.showCustomAlert = showCustomAlert;
+window.closeCustomAlert = closeCustomAlert;
+
+
+
+
+async function retryAwb(phone, orderId) {
+  const orderRef = ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}`);
+  const snap = await get(orderRef);
+  const order = snap.val();
+  if (!order) return showCustomAlert("Order not found");
+
+  await checkServiceability(order.pin);
+  if (!isServiceable) return showCustomAlert("Still not serviceable");
+
+  const awb = await getWaybill();
+
+  const delhiveryPayload = {
+    shipments: [{
+      name: order.name,
+      phone: order.phone,
+      add: order.address,
+      pin: order.pin,
+      order: order.orderId,
+      payment_mode: order.paymentMode,
+      cod_amount: order.paymentMode === "COD" ? Number(order.amount) : 0,
+      quantity: order.quantity || 1,
+      waybill: awb,
+      shipment_width: "10",
+      shipment_height: "10",
+      shipment_length: 10 * (order.quantity || 1),
+      weight: 300 * (order.quantity || 1),
+      products_desc: "Sugar Medicine",
+      shipping_mode: "Surface",
+      return_phone: 8449957169
+    }],
+    pickup_location: { name: "Jatin Home" }
+  };
+
+  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/create-order", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(delhiveryPayload)
+  });
+
+  const result = await res.json();
+  console.log("Retry manifest response:", result);
+
+  // Only update Firebase AFTER success
+  if (result?.success === false || result?.error) {
+    showCustomAlert("Retry failed. Still pending.");
+    return;
+  }
+
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/awb`), awb);
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/status`), "AWB GENERATED");
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/trackable`), true);
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/lastTrackedAt`), 0);
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/createdAt`), Date.now());
+
+  showCustomAlert("✅ AWB Assigned Successfully");
+}
+
+
+window.retryAwb = retryAwb;
+
+
+
+async function editShipment(phone, orderId) {
+  const snap = await get(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}`));
+  const order = snap.val();
+  if (!order || !order.awb) return showCustomAlert("No AWB assigned");
+
+  const newWeight = prompt("Enter new weight (gm)", "100");
+  const newHeight = prompt("Enter new height (cm)", "40");
+
+  if (!newWeight || !newHeight) return;
+
+  const payload = {
+    waybill: order.awb,
+    pt: order.paymentMode,
+    cod: order.paymentMode === "COD" ? Number(order.amount) : 0,
+    shipment_height: Number(newHeight),
+    weight: Number(newWeight)
+  };
+
+  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/edit-shipment", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (!data.success) return alert("Edit failed");
+
+  alert("✅ Shipment Updated");
+}
+
+window.editShipment = editShipment;
+
+async function cancelShipment(phone, orderId) {
+  if (!confirm("Are you sure to cancel shipment?")) return;
+
+  const snap = await get(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}`));
+  const order = snap.val();
+  if (!order || !order.awb) return showCustomAlert("No AWB assigned");
+
+  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/cancel-shipment", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ waybill: order.awb })
+  });
+
+  const data = await res.json();
+  console.log("Delhivery Cancel Response:", data);
+
+  const isSuccess =
+    data?.Success === true ||
+    data?.Status === "CANCELLED" ||
+    !data?.error;
+
+  if (!isSuccess) {
+    return showCustomAlert("❌ Cancel failed (Check Console)");
+  }
+
+  await set(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}/status`), "CANCELLED");
+
+  showCustomAlert("✅ Shipment Cancelled");
+  renderOrders();
+}
+
+window.cancelShipment = cancelShipment;
+
+
+async function openTracking(awb) {
+  const snap = await get(ref(db, `Tracking/${awb}`));
+  const data = snap.val();
+  if (!data) return showCustomAlert("No tracking data");
+
+  trackingTimeline.innerHTML = data.scans
+  .slice()
+  .reverse()
+  .map(s => `
+    <div class="border-b py-2">
+      <div class="font-semibold">
+        ${s.ScanDetail?.Scan || "Status Update"}
+      </div>
+
+      <div class="text-sm text-gray-600">
+        ${new Date(s.ScanDetail?.ScanDateTime).toLocaleString()}
+      </div>
+
+      ${
+        s.ScanDetail?.Instructions
+          ? `<div class="text-sm text-gray-800">
+               ${s.ScanDetail.Instructions}
+             </div>`
+          : ""
+      }
+    </div>
+  `)
+  .join("");
+
+
+  trackingModal.classList.remove("hidden");
+}
+
+
+function closeTracking() {
+  trackingModal.classList.add("hidden");
+}
+window.openTracking = openTracking;
+window.closeTracking = closeTracking;
+
+
+
+let trackingEngineStarted = false;
+
+function startTrackingEngine() {
+  console.log("FLag :" , trackingEngineStarted);
+  if (trackingEngineStarted) return;
+  trackingEngineStarted = true;
+
+  console.log("Flag" , trackingEngineStarted);
+  console.log("Tracking engine started");
+
+  setInterval(runTrackingWorker, 60000); // heartbeat only
+  runTrackingWorker(); // initial run
+}
+startTrackingEngine();
+setInterval(runScheduledOrdersWorker, 60000);
+runScheduledOrdersWorker();
+
+async function runTrackingWorker() {
+  const now = Date.now();
+
+  const snap = await get(ref(db, "Telecallers"));
+  const telecallers = snap.val() || {};
+
+  const awbsToTrack = [];
+
+  for (const tcKey of Object.keys(telecallers)) {
+    const ordersByPhone = telecallers[tcKey].Orders || {};
+
+    for (const phone of Object.keys(ordersByPhone)) {
+      for (const orderId of Object.keys(ordersByPhone[phone])) {
+        const order = ordersByPhone[phone][orderId];
+
+        if (!order.trackable || !order.awb) continue;
+
+        const last = order.lastTrackedAt || 0;
+
+        // first tracking
+        if (last === 0) {
+          awbsToTrack.push(order.awb);
+          continue;
+        }
+
+        const interval =
+          order.status === "OUT FOR DELIVERY"
+            ? 4 * 60 * 1000
+            : 30 * 60 * 1000;
+
+        if (now - last >= interval) {
+          awbsToTrack.push(order.awb);
+        }
+      }
+    }
+  }
+
+  if (!awbsToTrack.length) return;
+
+  for (let i = 0; i < awbsToTrack.length; i += 50) {
+    const batch = awbsToTrack.slice(i, i + 50);
+    await trackBatch(batch);
+  }
+}
+
+
+async function trackBatch(awbs) {
+  console.log("Tracking batch AWBs:", awbs);
+
+  const res = await fetch(
+    `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awbs.join(",")}`
+  );
+
+  const data = await res.json();
+  const shipments = data?.ShipmentData || [];
+  console.log("RAW PKG FROM DELHIVERY:", data);
+
+
+  for (const pkg of shipments) {
+    await handleTrackingUpdate(pkg);
+  }
+}
+
+
+async function handleTrackingUpdate(pkg) {
+  const shipment = pkg?.Shipment;
+  if (!shipment) return;
+
+  const awb = shipment.AWB;
+  if (!awb) return;
+
+  const scans = shipment.Scans || [];
+  if (!scans.length) return;
+
+  const latestScan = scans[scans.length - 1];
+  const status = resolveStatusFromScan(latestScan);
+  const now = Date.now();
+
+  await set(ref(db, `Tracking/${awb}`), {
+    status,
+    scans,
+    updatedAt: now
+  });
+
+  const snap = await get(ref(db, "Telecallers"));
+  const telecallers = snap.val() || {};
+
+  for (const tcKey of Object.keys(telecallers)) {
+    const orders = telecallers[tcKey].Orders || {};
+
+    for (const phone of Object.keys(orders)) {
+      for (const orderId of Object.keys(orders[phone])) {
+        const order = orders[phone][orderId];
+        if (order.awb !== awb) continue;
+
+        let trackable = true;
+
+        if (["DELIVERED", "RTO", "CANCELLED"].includes(status)) {
+          trackable = false;
+        }
+
+        const updatedOrder = {
+  ...order,
+  status: status,
+  trackable: trackable,
+  lastTrackedAt: now
+};
+
+await set(
+  ref(db, `Telecallers/${tcKey}/Orders/${phone}/${orderId}`),
+  updatedOrder
+);
+
+/* ===== MOVE TO DELIVERED NODE ===== */
+
+if(status === "DELIVERED"){
+
+  const deliveredData = {
+    ...updatedOrder,
+    deliveredAt: now
+  };
+
+  await set(
+    ref(db, `Telecallers/${tcKey}/Delivered/${phone}/${orderId}`),
+    deliveredData
+  );
+
+}
+
+
+        if (status === "OUT FOR DELIVERY") {
+          const addedTime = Date.now();
+
+      await set(
+        ref(db, `Telecallers/${tcKey}/OFD/${awb}`),
+        { addedTime }
+      );
+        }
+
+        
+      }
+    }
+  }
+}
+
+
+
+function resolveStatusFromScan(scan) {
+  const detail = scan?.ScanDetail || {};
+
+  const scanType = detail.ScanType || "";
+  const instruction = (detail.Instructions || "").toLowerCase();
+  const scanText = (detail.Scan || "").toLowerCase();
+
+  if (scanType === "RT") return "RTO";
+
+  if (instruction.includes("out for delivery") || instruction.includes("call placed to consignee")) {
+    if (scan?.AWB) {
+      const awb = scan.AWB;
+      
+    }
+    return "OUT FOR DELIVERY";
+  }
+
+  if (scanText.includes("manifest")) return "AWB GENERATED";
+  if (scanText.includes("transit")) return "IN TRANSIT";
+  if (scanText.includes("delivered")) return "DELIVERED";
+  if (scanText.includes("not picked")) return "CANCELLED";
+
+  return "PICKED";
+}
+
+
+
+function normalizeDelhiveryStatus(raw) {
+  if (!raw) return "UNKNOWN";
+
+  const status = raw.toUpperCase();
+
+  if (status.includes("DELIVERED")) return "DELIVERED";
+  if (status.includes("RTO")) return "RTO - RETURNED";
+  if (status.includes("OUT FOR DELIVERY")) return "OUT FOR DELIVERY";
+  if (status.includes("IN TRANSIT")) return "IN TRANSIT";
+  if (status.includes("PICKED")) return "PICKED";
+  if (status.includes("MANIFEST")) return "AWB GENERATED";
+
+  return status;
+}
+
+
+function clearOrderModal() {
+  document.querySelectorAll("#orderModal input, #orderModal select")
+    .forEach(el => {
+      if (el.id === "quantity") {
+        el.value = "1";
+      }
+      else if(el.id === "paymentMode") {
+        el.value = "COD";
+      }
+      else {
+        el.value = "";
+      }
+    });
+
+  document.getElementById("pinStatus").textContent = "";
+  document.getElementById("awbBtn").disabled = true;
+}
+
+function showCustomAlert(message) {
+  document.getElementById("customAlertMessage").innerText = message;
+  document.getElementById("customAlert").classList.remove("hidden");
+}
+
+function closeCustomAlert() {
+  document.getElementById("customAlert").classList.add("hidden");
+}
+
+
+async function runScheduledOrdersWorker() {
+
+  const today = new Date().setHours(0,0,0,0);
+
+  const snap = await get(ref(db, `Telecallers/${emailKey}/ScheduledOrders`));
+  const scheduled = snap.val() || {};
+
+  for (const orderId of Object.keys(scheduled)) {
+
+    const order = scheduled[orderId];
+
+    if (!order.scheduleDate) continue;
+    if (order.scheduleDate > today) continue;
+
+    console.log("Processing scheduled order:", orderId);
+
+    try {
+
+      /* ===== GENERATE AWB ===== */
+      const awb = await getWaybill();
+      const phoneKey = order.phone;
+
+      const newOrder = {
+        ...order,
+        orderId,
+        awb,
+        status: "AWB GENERATED",
+        createdAt: Date.now(),
+        trackable: true,
+        lastTrackedAt: 0
+      };
+
+      /* ===== SAVE ORDER ===== */
+
+      await set(
+        ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`),
+        newOrder
+      );
+
+      await set(ref(db, `TrackingQueues/normal/${awb}`), true);
+
+      /* ===== MANIFEST TO DELHIVERY ===== */
+
+      const payload = {
+        shipments: [{
+          name: order.name,
+          phone: order.phone,
+          add: order.address,
+          pin: order.pin,
+          order: orderId,
+          payment_mode: order.paymentMode,
+          cod_amount: order.paymentMode === "COD"
+            ? Number(order.amount)
+            : 0,
+          quantity: order.quantity || 1,
+          waybill: awb,
+          shipment_width: "10",
+          shipment_height: "10",
+          shipment_length: 10 * (order.quantity || 1),
+          weight: 300 * (order.quantity || 1),
+          products_desc: "Sugar Medicine",
+          shipping_mode: "Surface",
+          return_phone: 8449957169
+        }],
+        pickup_location: { name: "Jatin Home" }
+      };
+
+      const res = await fetch(
+        "https://shreejee-delhivery-proxy.deno.dev/create-order",
+        {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        }
+      );
+
+      const result = await res.json();
+      console.log("Scheduled manifest response:", result);
+
+      if (result?.success === false) {
+
+        await set(
+          ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/status`),
+          "PENDING"
+        );
+
+        await set(
+          ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/trackable`),
+          false
+        );
+
+        showCustomAlert("❌ Scheduled order failed. Status set to PENDING. Try again after 24 hours.");
+      }
+
+      /* ===== DELETE SCHEDULED ORDER ===== */
+
+      await remove(
+        ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`)
+      );
+
+    } catch(err) {
+
+      console.error("Scheduled order failed:", err);
+
+    }
+  }
+}
+
+
+</script>
+</head>
+
+<body class="bg-slate-900 text-white min-h-screen">
+
+<header class="flex justify-between p-4 bg-black/40">
+  <div>👤 <span id="telecallerName"></span></div>
+  <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">Logout</button>
+</header>
+
+<main class="p-6">
+  <button onclick="openModal()" class="bg-blue-500 px-4 py-2 rounded">+ Add Order</button>
+  <div class="flex flex-wrap gap-3 mb-4 items-center">
+
+  <!-- 🔍 Search -->
+  <input
+    id="searchInput"
+    placeholder="Search by Name or Phone"
+    class="px-3 py-2 rounded bg-black/40 border border-gray-600 text-white w-64"
+  />
+
+  <!-- 🎯 Status Filter -->
+  <select
+    id="statusFilter"
+    class="px-3 py-2 rounded bg-black/40 border border-gray-600 text-white"
+  >
+    <option value="ALL">All Status</option>
+    <option value="DELIVERED">Delivered</option>
+    <option value="OUT FOR DELIVERY">Out for Delivery</option>
+    <option value="PENDING">Pending</option>
+    <option value="CANCELLED">Cancelled</option>
+    <option value="PICKED">Issue</option>
+    <option value="IN TRANSIT">In Transit</option>
+    <option value="RTO">RTO</option>
+  </select>
+
+  <!-- 📅 Date Filter -->
+  <select
+    id="dateFilter"
+    class="px-3 py-2 rounded bg-black/40 border border-gray-600 text-white"
+  >
+    <option value="LIFETIME">Lifetime</option>
+    <option value="TODAY">Today</option>
+    <option value="LAST_WEEK">Last Week</option>
+    <option value="THIS_MONTH">This Month</option>
+    <option value="LAST_MONTH">Last Month</option>
+    <option value="CUSTOM">Custom</option>
+  </select>
+
+  <!-- 📆 Custom Date Range -->
+  <input type="date" id="fromDate"
+    class="px-2 py-2 rounded bg-black/40 border border-gray-600 text-white hidden">
+  <input type="date" id="toDate"
+    class="px-2 py-2 rounded bg-black/40 border border-gray-600 text-white hidden">
+
+    <button
+    onclick="location.href='Out-for-delivery.html'"
+    class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded shadow-lg">
+    🚚 Out For Delivery
+  </button>
+  <button
+  onclick="location.href='scheduled-orders.html'"
+  class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded shadow-lg">
+  📅 Scheduled Orders
+</button>
+
+<button
+      onclick="location.href='reorder.html'"
+      class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded shadow">
+      🔁 Reorder
+    </button>
+
+   <!-- 📊 TOTAL ORDERS -->
+  <div id="ordersTotal"
+       class="text-sm bg-blue-600 px-3 py-2 rounded font-semibold">
+    Total: 0
+  </div>
+
+</div>
+
+  <div id="ordersContainer" class="mt-6"></div>
+</main>
+
+<!-- ADD ORDER MODAL -->
+<div id="orderModal" class="hidden fixed inset-0 bg-black/70 flex justify-center items-center">
+  <div class="bg-white text-black p-6 rounded w-full max-w-lg space-y-2">
+    <button onclick="closeModal()" 
+      class="absolute top-2 right-2 text-red-600 font-bold">✕</button>
+    <input id="name" placeholder="Name" class="w-full p-2">
+    <input id="phone" placeholder="Phone" class="w-full p-2">
+    <div class="flex items-center gap-2">
+      <input id="pin" placeholder="Pincode" class="w-full p-2">
+      <span id="pinStatus" class="text-xl"></span>
+    </div>
+    <input id="city" placeholder="City" class="w-full p-2 bg-gray-200 cursor-not-allowed" readonly>
+    <input id="state" placeholder="State" class="w-full p-2 bg-gray-200 cursor-not-allowed" readonly>
+
+    <input id="address" placeholder="Address" class="w-full p-2">
+    <input id="quantity" placeholder="Quantity" class="w-full p-2" value="1">
+    <input id="orderAmount" placeholder="Amount" class="w-full p-2">
+    <select id="paymentMode" class="w-full p-2">
+      <option>COD</option>
+      <option>Prepaid</option>
+    </select>
+    <input id="scheduleDate" type="date" class="w-full p-2" placeholder="Schedule Date (optional)">
+    <div class="flex gap-2">
+      <button onclick="saveOrder(false)" class="bg-gray-600 px-4 py-2 text-white">Save</button>
+      <button id="awbBtn" onclick="saveOrder(true)" class="bg-green-600 px-4 py-2 text-white disabled:opacity-50" disabled>Save & Generate AWB</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- VIEW ORDER MODAL -->
+<div id="viewModal" class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
+  <div class="bg-white text-black p-6 rounded w-full max-w-2xl relative">
+
+    <button onclick="closeViewModal()" 
+      class="absolute top-2 right-2 text-red-600 font-bold">✕</button>
+
+    <h2 class="text-xl font-bold mb-3">Customer Details</h2>
+
+    <div id="customerDetails" class="space-y-1 mb-4"></div>
+
+    <h3 class="font-bold mb-2">Order History</h3>
+
+    <div id="customerOrders"
+      class="max-h-64 overflow-y-auto space-y-2 bg-gray-100 p-3 rounded">
+    </div>
+
+  </div>
+</div>
+   
+<!-- TRACKING MODAL -->
+
+<!-- TRACKING MODAL -->
+<div id="trackingModal"
+  class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
+
+  <div
+    class="bg-white text-black p-6 rounded w-full max-w-xl relative max-h-[80vh] flex flex-col">
+
+    <!-- ❌ Close Button -->
+    <button
+      onclick="closeTracking()"
+      class="absolute top-3 right-3 text-gray-600 hover:text-red-600 text-xl font-bold">
+      ✕
+    </button>
+
+    <!-- Title -->
+    <h2 class="font-bold mb-3 text-lg">📦 Tracking Details</h2>
+
+    <!-- Scrollable Timeline -->
+    <div
+      id="trackingTimeline"
+      class="flex-1 overflow-y-auto border rounded p-3 space-y-3 bg-gray-100">
+    </div>
+
+  </div>
+</div>
+
+<!-- CUSTOM ALERT MODAL -->
+<div id="customAlert"
+  class="hidden fixed inset-0 bg-black/60 flex justify-center items-center z-50">
+
+  <div class="bg-white text-black p-6 rounded w-full max-w-md shadow-lg relative">
+
+    <div id="customAlertMessage" class="mb-6 text-sm"></div>
+
+    <div class="flex justify-end">
+      <button onclick="closeCustomAlert()"
+        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+</body>
+</html>
