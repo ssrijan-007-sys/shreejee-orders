@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Telecaller Payments</title>
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon.png">
+  <link rel="apple-touch-icon" href="../favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script type="module">
+import { db } from "../firebase/firebase-config.js";
+import {
+  ref,
+  onValue,
+  get,
+  update
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+let selectedTelecaller = "";
+let allData = {};
+let selectedRate = 100;
+
+// DATE FILTER STATE
+let selectedDateFilter = "ALL";
+let fromDate = null;
+let toDate = null;
+
+const telecallerSelect = document.getElementById("telecallerSelect");
+const container = document.getElementById("ordersContainer");
+const salaryBox = document.getElementById("salaryBox");
+
+/* =========================
+   LOAD TELECALLERS
+========================= */
+async function loadTelecallers() {
+  const snap = await get(ref(db, "Telecallers"));
+  const data = snap.val() || {};
+
+  telecallerSelect.innerHTML = `<option value="">Select a telecaller</option>`;
+
+  Object.keys(data).forEach(key => {
+    const name = key.split("_")[0].toUpperCase();
+    telecallerSelect.innerHTML += `<option value="${key}">${name}</option>`;
+  });
+}
+
+/* =========================
+   REALTIME LISTENER
+========================= */
+function startListener() {
+  onValue(ref(db, "Telecallers"), (snap) => {
+    allData = snap.val() || {};
+    render();
+  });
+}
+
+/* =========================
+   DATE FILTER LOGIC
+========================= */
+function isWithinDate(orderTime) {
+  if (!orderTime) return false;
+
+  const now = new Date();
+  const orderDate = new Date(orderTime);
+
+  switch (selectedDateFilter) {
+    case "TODAY":
+      return orderDate.toDateString() === now.toDateString();
+
+    case "THIS_MONTH":
+      return orderDate.getMonth() === now.getMonth() &&
+             orderDate.getFullYear() === now.getFullYear();
+
+    case "LAST_MONTH":
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return orderDate.getMonth() === lastMonth.getMonth() &&
+             orderDate.getFullYear() === lastMonth.getFullYear();
+
+    case "CUSTOM":
+      if (!fromDate || !toDate) return true;
+      return orderTime >= fromDate && orderTime <= toDate;
+
+    default:
+      return true;
+  }
+}
+
+/* =========================
+   RENDER UI
+========================= */
+function render() {
+
+  if (!selectedTelecaller) {
+    container.innerHTML = `<p class="text-gray-400">No payable orders</p>`;
+    salaryBox.innerText = "Salary: ₹0 (0 orders)";
+    return;
+  }
+
+  const tcData = allData[selectedTelecaller] || {};
+  const delivered = tcData.Delivered || {};
+
+  let orders = [];
+
+  Object.entries(delivered).forEach(([phone, phoneOrders]) => {
+
+    Object.entries(phoneOrders).forEach(([orderId, order]) => {
+
+      const paid = order.paid === true;
+
+      if (!paid && isWithinDate(order.createdAt)) {
+        orders.push({
+          ...order,
+          phone,
+          orderId
+        });
+      }
+
+    });
+
+  });
+
+  if (!orders.length) {
+    container.innerHTML = `<p class="text-gray-400">No payable orders</p>`;
+    salaryBox.innerText = "Salary: ₹0 (0 orders)";
+    return;
+  }
+
+  orders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const totalOrders = orders.length;
+  const salary = totalOrders * selectedRate;
+
+  salaryBox.innerText = `Salary: ₹${salary} (${totalOrders} orders @ ₹${selectedRate})`;
+
+  let html = `
+    <div class="mb-4">
+      <button onclick="payAll()"
+        class="bg-green-600 px-4 py-2 rounded">
+        Pay All
+      </button>
+    </div>
+  `;
+
+  orders.forEach(o => {
+
+    html += `
+      <div class="bg-black/40 border border-gray-600 p-4 rounded mb-3">
+
+        <div class="flex justify-between">
+          <div class="font-semibold">${o.name || "-"}</div>
+          <div class="text-sm text-gray-400">
+            ${new Date(o.createdAt || Date.now()).toLocaleDateString()}
+          </div>
+        </div>
+
+        <div>📞 ${o.phone}</div>
+        <div>💰 ₹${o.amount || 0}</div>
+
+        <button onclick="markPaid('${selectedTelecaller}','${o.phone}','${o.orderId}')"
+          class="mt-2 bg-blue-600 px-3 py-1 rounded">
+          Pay
+        </button>
+
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+/* =========================
+   MARK SINGLE PAID
+========================= */
+window.markPaid = async (tc, phone, orderId) => {
+
+  if (!confirm("Mark this order as PAID?")) return;
+
+  await update(
+    ref(db, `Telecallers/${tc}/Delivered/${phone}/${orderId}`),
+    { paid: true }
+  );
+};
+
+/* =========================
+   PAY ALL
+========================= */
+window.payAll = async () => {
+
+  if (!confirm("Pay ALL visible orders?")) return;
+
+  const tcData = allData[selectedTelecaller] || {};
+  const delivered = tcData.Delivered || {};
+
+  let updates = {};
+
+  Object.entries(delivered).forEach(([phone, phoneOrders]) => {
+
+    Object.entries(phoneOrders).forEach(([orderId, order]) => {
+
+      if (order.paid !== true && isWithinDate(order.createdAt)) {
+        updates[
+          `Telecallers/${selectedTelecaller}/Delivered/${phone}/${orderId}/paid`
+        ] = true;
+      }
+
+    });
+
+  });
+
+  await update(ref(db), updates);
+};
+
+/* =========================
+   EVENTS
+========================= */
+document.getElementById("rateSelect").addEventListener("change", e => {
+  selectedRate = Number(e.target.value);
+  render();
+});
+
+document.getElementById("dateFilter").addEventListener("change", e => {
+  selectedDateFilter = e.target.value;
+
+  const show = selectedDateFilter === "CUSTOM";
+  document.getElementById("fromDate").classList.toggle("hidden", !show);
+  document.getElementById("toDate").classList.toggle("hidden", !show);
+
+  render();
+});
+
+document.getElementById("fromDate").addEventListener("change", e => {
+  fromDate = new Date(e.target.value).getTime();
+  render();
+});
+
+document.getElementById("toDate").addEventListener("change", e => {
+  toDate = new Date(e.target.value).getTime() + 86400000;
+  render();
+});
+
+telecallerSelect.addEventListener("change", e => {
+  selectedTelecaller = e.target.value;
+  render();
+});
+
+/* =========================
+   INIT
+========================= */
+window.onload = async () => {
+  await loadTelecallers();
+  startListener();
+};
+</script>
+</head>
+
+<body class="bg-gray-900 text-white p-6">
+
+<div class="max-w-4xl mx-auto">
+
+  <h1 class="text-2xl mb-4 text-green-400">
+    Telecaller Payments
+  </h1>
+
+  <!-- TELECALLER -->
+  <select id="telecallerSelect"
+    class="mb-4 px-3 py-2 bg-black border border-gray-600 rounded w-full">
+  </select>
+
+  <!-- RATE -->
+  <select id="rateSelect"
+    class="mb-4 px-3 py-2 bg-black border border-gray-600 rounded">
+    <option value="100">₹100 per order</option>
+    <option value="120">₹120 per order</option>
+  </select>
+
+  <!-- DATE FILTER -->
+  <select id="dateFilter"
+    class="mb-4 px-3 py-2 bg-black border border-gray-600 rounded">
+    <option value="ALL">All Time</option>
+    <option value="TODAY">Today</option>
+    <option value="THIS_MONTH">This Month</option>
+    <option value="LAST_MONTH">Last Month</option>
+    <option value="CUSTOM">Custom</option>
+  </select>
+
+  <input type="date" id="fromDate"
+    class="hidden mb-2 px-2 py-2 text-black rounded">
+
+  <input type="date" id="toDate"
+    class="hidden mb-4 px-2 py-2 text-black rounded">
+
+  <!-- SALARY -->
+  <div id="salaryBox"
+    class="mb-4 bg-green-700 px-4 py-2 rounded font-semibold">
+    Salary: ₹0
+  </div>
+
+  <!-- ORDERS -->
+  <div id="ordersContainer"></div>
+
+</div>
+
+</body>
+</html>

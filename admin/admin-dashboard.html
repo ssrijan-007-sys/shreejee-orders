@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <title>Admin Dashboard</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon.png">
+  <link rel="apple-touch-icon" href="../favicon.png">
 
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -21,12 +24,21 @@
     /* =========================
        STATUS COLOR HELPERS
     ========================= */
+
+    let allOrdersCache = [];
+    let searchQuery = "";
+    let awbQuery = "";
+    let selectedDateRange = "ALL";
+    let customFromDate = null;
+    let customToDate = null;
+
+
     function getStatusBorder(status) {
       if (!status) return "border-gray-500";
 
       status = status.toUpperCase();
 
-      if (status.includes("DELIVER")) return "border-green-500";
+      if (status.includes("DELIVERED")) return "border-green-500";
       if (status.includes("CANCEL")) return "border-red-500";
       if (status.includes("OUT")) return "border-orange-400";
       if (status.includes("PENDING")) return "border-yellow-400";
@@ -39,7 +51,7 @@
       if (!status) return "text-gray-300";
       status = status.toUpperCase();
 
-      if (status.includes("DELIVER")) return "text-green-400";
+      if (status.includes("DELIVERED")) return "text-green-400";
       if (status.includes("CANCEL")) return "text-red-400";
       if (status.includes("OUT")) return "text-orange-300";
       if (status.includes("PENDING")) return "text-yellow-300";
@@ -51,81 +63,426 @@
     /* =========================
        ADMIN REALTIME RENDER
     ========================= */
-    function renderAdminDashboard() {
-      onValue(ref(db, "Telecallers"), (snap) => {
-        const telecallers = snap.val() || {};
-        let html = "";
 
-        Object.entries(telecallers).forEach(([emailKey, tcData]) => {
-          const ordersRoot = tcData.Orders || {};
-          let allOrders = [];
+    // Event listeners for filters and search
+    
 
-          Object.values(ordersRoot).forEach(group => {
-            Object.values(group).forEach(order => {
-              allOrders.push(order);
-            });
-          });
+    searchInput.addEventListener("input", e => {
+  searchQuery = e.target.value.toLowerCase();
+  renderUI();
+});
 
-          if (!allOrders.length) return;
+dateFilter.addEventListener("change", e => {
+  selectedDateRange = e.target.value;
 
-          allOrders.sort((a, b) => b.createdAt - a.createdAt);
+  const show = selectedDateRange === "CUSTOM";
+  fromDate.classList.toggle("hidden", !show);
+  toDate.classList.toggle("hidden", !show);
 
-          const groupedByDate = {};
+  renderUI();
+});
 
-          allOrders.forEach(o => {
-            const d = new Date(o.createdAt);
-            const key =
-              String(d.getDate()).padStart(2, "0") +
-              "/" +
-              String(d.getMonth() + 1).padStart(2, "0") +
-              "/" +
-              d.getFullYear();
+fromDate.addEventListener("change", e => {
+  customFromDate = new Date(e.target.value).getTime();
+  renderUI();
+});
 
-            if (!groupedByDate[key]) groupedByDate[key] = [];
-            groupedByDate[key].push(o);
-          });
+toDate.addEventListener("change", e => {
+  customToDate = new Date(e.target.value).getTime() + 86400000;
+  renderUI();
+});
 
-          html += `
-            <div class="bg-black/40 p-5 rounded-xl mb-6 border border-gray-700">
-              <div class="text-xl font-bold text-blue-400 mb-4">
-                Telecaller: ${emailKey.split('_')[0].toUpperCase()}
-              </div>
-          `;
+document.getElementById("telecallerFilter")
+.addEventListener("change", (e) => {
+  selectedTelecaller = e.target.value;
+  renderUI();
+});
 
-          Object.entries(groupedByDate).forEach(([date, orders]) => {
-            html += `
-              <div class="mb-4">
-                <div class="text-lg font-semibold text-purple-300 mb-2">
-                  📅 ${date}
-                </div>
-            `;
+async function openTrackingByAWB(awb) {
 
-            orders.forEach(o => {
-              html += `
-                <div class="bg-white/10 p-3 mb-2 rounded-lg border-2 ${getStatusBorder(o.status)}">
-                  <div class="font-semibold">${o.name}</div>
-                  <div class="text-sm">📞 ${o.phone}</div>
-                  <div class="text-sm ${getStatusText(o.status)}">
-                    Status: ${o.status || "N/A"}
-                  </div>
-                  <div class="text-sm">AWB: ${o.awb || "-"}</div>
-                  <div class="text-sm">Order ID: ${o.orderId}</div>
-                </div>
-              `;
-            });
+  if (!awb) return alert("Enter AWB");
 
-            html += `</div>`;
-          });
+  try {
 
-          html += `</div>`;
-        });
+    const res = await fetch(
+      `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awb}`
+    );
 
-        container.innerHTML = html || "<p>No orders found</p>";
-      });
+    const data = await res.json();
+
+    const shipment = data?.ShipmentData?.[0]?.Shipment;
+
+    if (!shipment) {
+      alert("No tracking found");
+      return;
     }
 
-    renderAdminDashboard();
+    const scans = shipment.Scans || [];
 
+    if (!scans.length) {
+      trackingTimeline.innerHTML = "<p>No scans available</p>";
+    } else {
+
+      trackingTimeline.innerHTML = scans
+        .slice()
+        .reverse()
+        .map(scan => {
+
+          const detail = scan.ScanDetail || {};
+
+          return `
+            <div class="border-b pb-2">
+
+              <div class="font-semibold text-blue-700">
+                ${detail.Scan || "Status Update"}
+              </div>
+
+              <div class="text-sm text-gray-600">
+                ${new Date(detail.ScanDateTime).toLocaleString()}
+              </div>
+
+              ${
+                detail.Instructions
+                  ? `<div class="text-sm text-gray-800">
+                       ${detail.Instructions}
+                     </div>`
+                  : ""
+              }
+
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    document.getElementById("trackingModal").classList.remove("hidden");
+
+  } catch (err) {
+    console.error(err);
+    alert("Tracking failed");
+  }
+}
+
+function closeTracking() {
+  document.getElementById("trackingModal").classList.add("hidden");
+}
+window.closeTracking = closeTracking;
+window.openTrackingByAWB = openTrackingByAWB;
+
+
+    async function searchByAWB(awb) {
+
+  if (!awb) {
+    renderAdminDashboard();
+    return;
+  }
+
+  try {
+
+    const res = await fetch(
+      `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awb}`
+    );
+
+    const data = await res.json();
+
+    const shipment = data?.ShipmentData?.[0]?.Shipment;
+
+    if (!shipment) {
+      alert("No tracking found");
+      return;
+    }
+
+    // 🔥 FIND ORDER IN FIREBASE
+    const snap = await get(ref(db, "Telecallers"));
+    const telecallers = snap.val() || {};
+
+    let foundOrder = null;
+
+    for (const tc of Object.values(telecallers)) {
+      const orders = tc.Orders || {};
+
+      for (const phone of Object.keys(orders)) {
+        for (const order of Object.values(orders[phone])) {
+          if (order.awb === awb) {
+            foundOrder = order;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!foundOrder) {
+      alert("Order not found in system");
+      return;
+    }
+
+    // 🔥 SHOW ONLY THIS ORDER
+    container.innerHTML = `
+      <div class="bg-black/40 p-5 rounded-xl border border-gray-700">
+
+        <div class="text-lg text-green-400 mb-3">
+          🔎 AWB Search Result
+        </div>
+
+        <div class="bg-white/10 p-3 rounded border ${getStatusBorder(foundOrder.status)}">
+
+          <div class="font-semibold">${foundOrder.name}</div>
+          <div>📞 ${foundOrder.phone}</div>
+          <div>Status: ${foundOrder.status}</div>
+          <div>AWB: ${foundOrder.awb}</div>
+          <div>Order ID: ${foundOrder.orderId}</div>
+
+        </div>
+
+      </div>
+    `;
+
+  } catch (err) {
+    console.error(err);
+    alert("Error searching AWB");
+  }
+}
+
+
+function startRealtimeListener() {
+
+  onValue(ref(db, "Telecallers"), (snap) => {
+
+    const telecallers = snap.val() || {};
+
+    let allOrders = [];
+
+    Object.entries(telecallers).forEach(([emailKey, tcData]) => {
+
+      const name = emailKey.split("_")[0].toUpperCase();
+
+      const ordersRoot = tcData.Orders || {};
+
+      Object.values(ordersRoot).forEach(group => {
+        Object.values(group).forEach(order => {
+
+          allOrders.push({
+            ...order,
+            telecaller: name,
+            telecallerKey: emailKey
+          });
+
+        });
+      });
+
+    });
+
+    // 🔥 STORE IN CACHE
+    allOrdersCache = allOrders;
+
+    // 🔥 RENDER AFTER FETCH
+    renderUI();
+  });
+}
+
+function renderUI() {
+
+  let filtered = [...allOrdersCache];
+
+  const now = Date.now();
+
+  // 🔍 SEARCH FILTER
+  if (searchQuery) {
+    filtered = filtered.filter(o =>
+      o.name?.toLowerCase().includes(searchQuery) ||
+      o.phone?.includes(searchQuery)
+    );
+  }
+
+  // 👤 TELECALLER FILTER
+  if (selectedTelecaller !== "ALL") {
+    filtered = filtered.filter(o =>
+      o.telecallerKey === selectedTelecaller
+    );
+  }
+
+  // 📅 DATE FILTER
+  filtered = filtered.filter(o => {
+
+    if (!o.createdAt) return false;
+
+    switch (selectedDateRange) {
+
+      case "TODAY":
+        return new Date(o.createdAt).toDateString() === new Date().toDateString();
+
+      case "LAST_7":
+        return o.createdAt >= now - 7 * 24 * 60 * 60 * 1000;
+
+      case "THIS_MONTH": {
+        const d = new Date(o.createdAt);
+        const n = new Date();
+        return d.getMonth() === n.getMonth() &&
+               d.getFullYear() === n.getFullYear();
+      }
+
+      case "CUSTOM":
+        if (!customFromDate || !customToDate) return true;
+        return o.createdAt >= customFromDate && o.createdAt <= customToDate;
+
+      default:
+        return true;
+    }
+  });
+
+// 🔥 SORT FIRST (VERY IMPORTANT)
+filtered.sort((a, b) => b.createdAt - a.createdAt);
+
+
+  // 📊 TOTAL ORDERS
+const totalOrders = filtered.length;
+
+// 📦 DELIVERED + RTO + REVENUE
+let deliveredCount = 0;
+let rtoCount = 0;
+let totalRevenue = 0;
+
+filtered.forEach(o => {
+
+  const status = (o.status || "").toUpperCase();
+
+  if (status.includes("DELIVERED")) {
+    deliveredCount++;
+    totalRevenue += Number(o.amount || 0);
+  }
+
+  if (status.includes("RTO")) {
+    rtoCount++;
+  }
+
+});
+
+const totalClosed = deliveredCount + rtoCount;
+
+const deliveryRate = totalClosed
+  ? ((deliveredCount / totalClosed) * 100).toFixed(1)
+  : 0;
+
+// Optional: RTO rate too
+const rtoRate = totalClosed
+  ? ((rtoCount / totalClosed) * 100).toFixed(1)
+  : 0;
+
+// 🎯 UPDATE UI
+document.getElementById("totalOrders").innerText =
+  `Total Orders: ${totalOrders}`;
+
+document.getElementById("deliveredCount").innerText =
+  `Delivered: ${deliveredCount}`;
+
+document.getElementById("rtoCount").innerText =
+  `RTO: ${rtoCount}`;
+
+document.getElementById("totalRevenue").innerText =
+  `Revenue: ₹${totalRevenue.toLocaleString()}`;
+
+  document.getElementById("deliveryRate").innerText =
+  `Delivery Rate: ${deliveryRate}%`;
+
+  document.getElementById("rtoRate").innerText =
+  `RTO Rate: ${rtoRate}%`;
+
+
+   if (!filtered.length) {
+    container.innerHTML = "<p>No orders found</p>";
+    return;
+  }
+  // 📅 GROUP BY DATE
+  const grouped = {};
+
+  filtered.forEach(o => {
+    const d = new Date(o.createdAt);
+    const key =
+      String(d.getDate()).padStart(2, "0") + "/" +
+      String(d.getMonth()+1).padStart(2, "0") + "/" +
+      d.getFullYear();
+
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(o);
+  });
+
+  // 🎨 RENDER
+  let html = "";
+
+  Object.entries(grouped).forEach(([date, orders]) => {
+
+    html += `
+      <div class="bg-black/40 p-5 rounded-xl mb-6 border border-gray-700">
+        <div class="text-lg font-bold text-purple-300 mb-4">
+          📅 ${date}
+        </div>
+    `;
+
+    orders.forEach(o => {
+
+      html += `
+        <div class="bg-white/10 p-3 mb-2 rounded-lg border-2 ${getStatusBorder(o.status)}">
+
+          <div class="flex justify-between">
+            <div class="font-semibold">${o.name}</div>
+            <div class="text-sm text-gray-400">${o.telecaller}</div>
+          </div>
+
+          <div class="text-sm">📞 ${o.phone}</div>
+          <div class="text-sm">Amount: ₹${o.amount || "0"}</div>
+
+          <div class="text-sm ${getStatusText(o.status)}">
+            Status: ${o.status || "N/A"}
+          </div>
+
+          <div class="text-sm">
+            AWB:
+            ${
+              o.awb
+                ? `<span onclick="openTrackingByAWB('${o.awb}')"
+                    class="text-blue-400 underline cursor-pointer hover:text-blue-200">
+                    ${o.awb}
+                  </span>`
+                : "-"
+            }
+          </div>
+          <div class="text-sm">Order ID: ${o.orderId}</div>
+
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+
+let selectedTelecaller = "ALL";
+
+async function loadTelecallerDropdown() {
+
+  const snap = await get(ref(db, "Telecallers"));
+  const telecallers = snap.val() || {};
+
+  const dropdown = document.getElementById("telecallerFilter");
+
+  dropdown.innerHTML = `<option value="ALL">All Telecallers</option>`;
+
+  Object.keys(telecallers).forEach(emailKey => {
+
+    const name = emailKey.split("_")[0].toUpperCase();
+
+    dropdown.innerHTML += `
+      <option value="${emailKey}">${name}</option>
+    `;
+
+  });
+
+  // 🔥 KEEP SELECTED VALUE
+  dropdown.value = selectedTelecaller;
+}
     let isFetching = false;
 
 async function fetchAndStoreWaybills() {
@@ -226,6 +583,13 @@ async function loadWaybillCount() {
 
     function logout(){ localStorage.clear(); location.href="../index.html"; }
     window.logout = logout;
+
+    window.onload = async () => {
+      const awbSearchInput = document.getElementById("awbSearchInput");
+  await loadTelecallerDropdown();
+  startRealtimeListener(); // 🔥 IMPORTANT
+};
+
   </script>
 </head>
 
@@ -238,10 +602,14 @@ async function loadWaybillCount() {
       <h1 class="text-3xl font-bold text-blue-400">
         Admin Dashboard
       </h1>
-
-      <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">
+      <div class="flex gap-3">
+      <button onclick="location.href='payment.html'" class="bg-green-600 hover:bg-green-700 px-4 py-1 rounded">
+        Payment
+      </button>
+      <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-1 rounded">
         Logout
       </button>
+      </div>
     </div>
 
     <div class="bg-black/40 p-4 rounded-lg mb-6 flex justify-between items-center border border-gray-700">
@@ -258,8 +626,99 @@ async function loadWaybillCount() {
 
 </div>
 
+  <select id="telecallerFilter"
+  class="mb-4 px-3 py-2 rounded bg-black border border-gray-600 text-white">
+  <option value="ALL">All Telecallers</option>
+  </select>
+
+  <div class="flex flex-wrap gap-3 mb-4 items-center">
+
+  <!-- 🔍 Search Name/Phone -->
+  <input id="searchInput"
+    placeholder="Search Name or Phone"
+    class="px-3 py-2 rounded bg-black border border-gray-600 text-white w-60"/>
+
+
+  <!-- 📅 Date Filter -->
+  <select id="dateFilter"
+    class="px-3 py-2 rounded bg-black border border-gray-600 text-white">
+    <option value="ALL">All Time</option>
+    <option value="TODAY">Today</option>
+    <option value="LAST_7">Last 7 Days</option>
+    <option value="THIS_MONTH">This Month</option>
+    <option value="CUSTOM">Custom</option>
+  </select>
+
+  <input type="date" id="fromDate"
+    class="px-2 py-2 rounded bg-white border border-gray-600 text-black hidden">
+
+  <input type="date" id="toDate"
+    class="px-2 py-2 rounded bg-white border border-gray-600 text-black hidden">
+
+  <div id="deliveryRate"
+  class=" ml-auto bg-blue-600 px-4 py-2 rounded font-semibold">
+  Delivery Rate: 0%
+</div>
+<div id="rtoRate"
+  class="bg-red-600 px-4 py-2 rounded font-semibold">
+  RTO Rate: 0%
+</div>
+
+</div>
+
+
+
+
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+
+  <div id="totalOrders"
+    class="bg-blue-600 px-4 py-2 rounded font-semibold">
+    Total Orders: 0
+  </div>
+
+  <!-- RIGHT GROUP -->
+  <div class="flex gap-2">
+    <div id="deliveredCount"
+      class="bg-blue-600 px-4 py-2 rounded font-semibold">
+      Delivered: 0
+    </div>
+
+    <div id="rtoCount"
+      class="bg-red-600 px-4 py-2 rounded font-semibold">
+      RTO: 0
+    </div>
+
+    <div id="totalRevenue"
+      class="bg-green-600 px-4 py-2 rounded font-semibold">
+      Revenue: ₹0
+    </div>
+  </div>
+</div>
     <div id="adminOrders"></div>
   </div>
+
+
+  <!-- TRACKING MODAL -->
+<div id="trackingModal"
+  class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
+
+  <div class="bg-white text-black p-6 rounded w-full max-w-xl relative max-h-[80vh] flex flex-col">
+
+    <!-- CLOSE -->
+    <button onclick="closeTracking()"
+      class="absolute top-3 right-3 text-xl font-bold text-red-600">
+      ✕
+    </button>
+
+    <h2 class="text-lg font-bold mb-3">📦 Tracking Details</h2>
+
+    <div id="trackingTimeline"
+      class="flex-1 overflow-y-auto bg-gray-100 p-3 rounded space-y-3">
+    </div>
+
+  </div>
+</div>
+
 
 </body>
 
