@@ -105,7 +105,7 @@ async function openTrackingByAWB(awb) {
   try {
 
     const res = await fetch(
-      `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awb}`
+      `https://proxy-new.ssrijan-007-sys.deno.net/track?waybills=${awb}`
     );
 
     const data = await res.json();
@@ -180,7 +180,7 @@ window.openTrackingByAWB = openTrackingByAWB;
   try {
 
     const res = await fetch(
-      `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awb}`
+      `https://proxy-new.ssrijan-007-sys.deno.net/track?waybills=${awb}`
     );
 
     const data = await res.json();
@@ -508,7 +508,7 @@ async function fetchAndStoreWaybills() {
   try {
 
     const res = await fetch(
-      "https://shreejee-delhivery-proxy.deno.dev/fetch-waybills",
+      "https://proxy-new.ssrijan-007-sys.deno.net/fetch-waybills",
       {
         method: "POST",
         headers: {
