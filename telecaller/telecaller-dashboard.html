@@ -92,7 +92,7 @@ let isServiceable = false;
 async function checkServiceability(pinCode) {
   try {
     const res = await fetch(
-      `https://shreejee-delhivery-proxy.deno.dev/serviceability?pin=${pinCode}`
+      `https://proxy-new.ssrijan-007-sys.deno.net/serviceability?pin=${pinCode}`
     );
 
     const data = await res.json();
@@ -266,7 +266,7 @@ async function saveOrder(assignAwb) {
 
 
   const res = await fetch(
-    "https://shreejee-delhivery-proxy.deno.dev/create-order",
+    "https://proxy-new.ssrijan-007-sys.deno.net/create-order",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -635,7 +635,7 @@ async function retryAwb(phone, orderId) {
     pickup_location: { name: "Jatin Home" }
   };
 
-  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/create-order", {
+  const res = await fetch("https://proxy-new.ssrijan-007-sys.deno.net/create-order", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify(delhiveryPayload)
@@ -682,7 +682,7 @@ async function editShipment(phone, orderId) {
     weight: Number(newWeight)
   };
 
-  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/edit-shipment", {
+  const res = await fetch("https://proxy-new.ssrijan-007-sys.deno.net/edit-shipment", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify(payload)
@@ -703,7 +703,7 @@ async function cancelShipment(phone, orderId) {
   const order = snap.val();
   if (!order || !order.awb) return showCustomAlert("No AWB assigned");
 
-  const res = await fetch("https://shreejee-delhivery-proxy.deno.dev/cancel-shipment", {
+  const res = await fetch("https://proxy-new.ssrijan-007-sys.deno.net/cancel-shipment", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({ waybill: order.awb })
@@ -839,7 +839,7 @@ async function trackBatch(awbs) {
   console.log("Tracking batch AWBs:", awbs);
 
   const res = await fetch(
-    `https://shreejee-delhivery-proxy.deno.dev/track?waybills=${awbs.join(",")}`
+    `https://proxy-new.ssrijan-007-sys.deno.net/track?waybills=${awbs.join(",")}`
   );
 
   const data = await res.json();
@@ -1075,7 +1075,7 @@ async function runScheduledOrdersWorker() {
       };
 
       const res = await fetch(
-        "https://shreejee-delhivery-proxy.deno.dev/create-order",
+        "https://proxy-new.ssrijan-007-sys.deno.net/create-order",
         {
           method: "POST",
           headers: {"Content-Type":"application/json"},
