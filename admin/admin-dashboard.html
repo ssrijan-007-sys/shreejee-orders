@@ -424,7 +424,17 @@ document.getElementById("totalRevenue").innerText =
         <div class="bg-white/10 p-3 mb-2 rounded-lg border-2 ${getStatusBorder(o.status)}">
 
           <div class="flex justify-between">
-            <div class="font-semibold">${o.name}</div>
+            <div class="font-semibold">
+              ${o.name}
+              ${o.isBlackBox ? `
+                <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
+                  BLACK BOX
+                </span>
+              ` : ""}
+              <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
+                 Qty: ${o.quantity || 1}
+              </span>
+            </div>
             <div class="text-sm text-gray-400">${o.telecaller}</div>
           </div>
 
