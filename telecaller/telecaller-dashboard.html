@@ -87,6 +87,7 @@ await set(ref(db, `Telecallers/${emailKey}/Name`), authUser.name);
 
 /* ================= STATE ================= */
 let isServiceable = false;
+let editingOrder = null;
 
 /* ================= PINCODE ================= */
 async function checkServiceability(pinCode) {
@@ -207,6 +208,63 @@ async function saveOrder(assignAwb) {
     status = "AWB GENERATED";
   }
 
+
+  // 🔥 UPDATE EXISTING ORDER
+if (editingOrder) {
+  const { phone: oldPhone, orderId } = editingOrder;
+
+  const newPhone = v("phone");
+
+  const snap = await get(
+    ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
+  );
+  const oldOrder = snap.val();
+
+  if (!oldOrder) return showCustomAlert("Order not found");
+
+  const updatedOrder = {
+    ...oldOrder,
+    phone: newPhone,
+    name: v("name"),
+    pin: v("pin"),
+    city: v("city"),
+    state: v("state"),
+    address: v("address"),
+    amount: v("orderAmount"),
+    quantity: v("quantity") || 1,
+    paymentMode: paymentMode.value,
+    status: "PENDING",
+    isBlackBox: document.getElementById("isBlackBox").checked
+  };
+
+  // 🔥 If phone changed → MOVE data
+  if (oldPhone !== newPhone) {
+    // 1️⃣ delete old
+    await remove(
+      ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
+    );
+
+    // 2️⃣ save new
+    await set(
+      ref(db, `Telecallers/${emailKey}/Orders/${newPhone}/${orderId}`),
+      updatedOrder
+    );
+  } else {
+    // normal update
+    await set(
+      ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`),
+      updatedOrder
+    );
+  }
+
+  editingOrder = null;
+
+  showCustomAlert("✅ Order Updated");
+  clearOrderModal();
+  closeModal();
+  renderOrders();
+  return;
+}
   const orderId = "SJ" + Date.now();
   const phoneKey = v("phone");
 
@@ -225,7 +283,8 @@ async function saveOrder(assignAwb) {
     status,
     createdAt: Date.now(),
     trackable: !!awb,
-  lastTrackedAt: 0
+  lastTrackedAt: 0,
+  isBlackBox: document.getElementById("isBlackBox").checked
   };
 
   await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`), order);
@@ -328,12 +387,17 @@ async function openViewModal(phone) {
                   ${o.status}
                 </span>
 
-          ${o.status === "PENDING" ? `
-          <span> <button onclick="retryAwb('${o.phone}', '${o.orderId}')"
-            class="bg-yellow-500 text-black px-2 py-1 rounded text-xs mt-1">
+         ${o.status === "PENDING" ? `
+          <button onclick="editOrder('${o.phone}', '${o.orderId}')"
+            class="bg-blue-500 text-black px-2 py-1 rounded text-xs">
+            Edit
+          </button>
+
+          <button onclick="retryAwb('${o.phone}', '${o.orderId}')"
+            class="bg-yellow-500 text-black px-2 py-1 rounded text-xs">
             Try Again
-          </button> </span>
-          ` : ""}
+          </button>
+        ` : ""}
           ${o.status === "AWB GENERATED" ? `
           <span> <button onclick="cancelShipment('${o.phone}', '${o.orderId}')"
             class="bg-red-600 text-black px-2 py-1 rounded text-xs mt-1">
@@ -488,6 +552,11 @@ document.getElementById("ordersTotal").innerText = `Total: ${allOrders.length}`;
 
                 <div class="flex gap-2 mt-1">
                   ${o.status === "PENDING" ? `
+                    <button onclick="editOrder('${o.phone}', '${o.orderId}')"
+                      class="bg-blue-500 text-black px-2 py-1 rounded text-xs">
+                      Edit
+                    </button>
+
                     <button onclick="retryAwb('${o.phone}', '${o.orderId}')"
                       class="bg-yellow-500 text-black px-2 py-1 rounded text-xs">
                       Try Again
@@ -513,10 +582,17 @@ document.getElementById("ordersTotal").innerText = `Total: ${allOrders.length}`;
               <div class="text-green-400 text-sm">Order ID: ${o.orderId}</div>
             </div>
 
-            <button onclick='openViewModal("${o.phone}")'
-              class="bg-blue-600 px-3 py-1 rounded text-sm">
-              View
-            </button>
+            <div class="flex gap-2">
+              <button onclick='openViewModal("${o.phone}")'
+                class="bg-blue-600 px-3 py-1 rounded text-sm">
+                View
+              </button>
+
+              <button onclick="reorder('${o.phone}', '${o.orderId}')"
+                class="bg-green-600 px-3 py-1 rounded text-sm">
+                Reorder
+              </button>
+            </div>
           </div>
         `).join("")}
       </div>
@@ -583,7 +659,7 @@ renderOrders();
 
 /* ================= UI ================= */
 function openModal(){ orderModal.classList.remove("hidden"); }
-function closeModal(){ orderModal.classList.add("hidden"); }
+function closeModal(){  editingOrder = null;  orderModal.classList.add("hidden");}
 function logout(){ localStorage.clear(); location.href="../index.html"; }
 
 pin.addEventListener("input", e => {
@@ -995,6 +1071,7 @@ function clearOrderModal() {
 
   document.getElementById("pinStatus").textContent = "";
   document.getElementById("awbBtn").disabled = true;
+  document.getElementById("isBlackBox").checked = false;
 }
 
 function showCustomAlert(message) {
@@ -1115,6 +1192,76 @@ async function runScheduledOrdersWorker() {
   }
 }
 
+//edit button 
+
+async function editOrder(phone, orderId) {
+  const snap = await get(ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}`));
+  const order = snap.val();
+
+  if (!order) return showCustomAlert("Order not found");
+
+  editingOrder = { phone, orderId };
+
+  // Prefill modal fields
+  document.getElementById("name").value = order.name || "";
+  document.getElementById("phone").value = order.phone || "";
+  document.getElementById("pin").value = order.pin || "";
+  document.getElementById("city").value = order.city || "";
+  document.getElementById("state").value = order.state || "";
+  document.getElementById("address").value = order.address || "";
+  document.getElementById("quantity").value = order.quantity || 1;
+  document.getElementById("orderAmount").value = order.amount || "";
+  document.getElementById("paymentMode").value = order.paymentMode || "COD";
+  document.getElementById("isBlackBox").checked = order.isBlackBox || false;
+
+  // Disable AWB button (since it's edit)
+  document.getElementById("awbBtn").disabled = true;
+
+  openModal();
+}
+
+window.editOrder = editOrder;
+
+
+async function reorder(phone, orderId) {
+  const snap = await get(
+    ref(db, `Telecallers/${emailKey}/Orders/${phone}/${orderId}`)
+  );
+  const order = snap.val();
+
+  if (!order) return showCustomAlert("Order not found");
+
+  // ❌ Important: NOT edit mode
+  editingOrder = null;
+
+  // Prefill modal
+  document.getElementById("name").value = order.name || "";
+  document.getElementById("phone").value = order.phone || "";
+  document.getElementById("pin").value = order.pin || "";
+  document.getElementById("city").value = order.city || "";
+  document.getElementById("state").value = order.state || "";
+  document.getElementById("address").value = order.address || "";
+  document.getElementById("quantity").value = order.quantity || 1;
+  document.getElementById("orderAmount").value = order.amount || "";
+  document.getElementById("paymentMode").value = order.paymentMode || "COD";
+  document.getElementById("isBlackBox").checked = order.isBlackBox || false;
+
+  // 🔥 Enable AWB button (VERY IMPORTANT)
+  document.getElementById("awbBtn").disabled = false;
+
+  // Optional: clear schedule date
+  document.getElementById("scheduleDate").value = "";
+
+  // Optional: re-check serviceability automatically
+  if (order.pin) {
+    checkServiceability(order.pin);
+  }
+
+  openModal();
+}
+
+window.reorder = reorder;
+
 
 </script>
 </head>
@@ -1220,6 +1367,10 @@ async function runScheduledOrdersWorker() {
       <option>COD</option>
       <option>Prepaid</option>
     </select>
+    <div class="flex items-center gap-2 mt-2">
+      <input type="checkbox" id="isBlackBox" class="w-4 h-4">
+      <label for="isBlackBox" class="text-sm">Black Box</label>
+    </div>
     <input id="scheduleDate" type="date" class="w-full p-2" placeholder="Schedule Date (optional)">
     <div class="flex gap-2">
       <button onclick="saveOrder(false)" class="bg-gray-600 px-4 py-2 text-white">Save</button>
