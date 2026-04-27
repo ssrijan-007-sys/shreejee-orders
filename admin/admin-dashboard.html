@@ -284,6 +284,12 @@ function renderUI() {
 
   let filtered = [...allOrdersCache];
 
+   // ❌ REMOVE CANCELLED ORDERS
+  filtered = filtered.filter(o => {
+    const status = (o.status || "").toUpperCase();
+    return !status.includes("CANCELLED");
+  });
+
   const now = Date.now();
 
   // 🔍 SEARCH FILTER

@@ -108,7 +108,7 @@ function render() {
 
       const paid = order.paid === true;
 
-      if (!paid && isWithinDate(order.createdAt)) {
+      if (!paid && isWithinDate(order.deliveredAt)) {
         orders.push({
           ...order,
           phone,
@@ -126,7 +126,7 @@ function render() {
     return;
   }
 
-  orders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  orders.sort((a, b) => (b.deliveredAt|| 0) - (a.deliveredAt|| 0));
 
   const totalOrders = orders.length;
   const salary = totalOrders * selectedRate;
@@ -150,7 +150,7 @@ function render() {
         <div class="flex justify-between">
           <div class="font-semibold">${o.name || "-"}</div>
           <div class="text-sm text-gray-400">
-            ${new Date(o.createdAt || Date.now()).toLocaleDateString()}
+            ${new Date(o.deliveredAt || Date.now()).toLocaleDateString()}
           </div>
         </div>
 
@@ -198,7 +198,7 @@ window.payAll = async () => {
 
     Object.entries(phoneOrders).forEach(([orderId, order]) => {
 
-      if (order.paid !== true && isWithinDate(order.createdAt)) {
+      if (order.paid !== true && isWithinDate(order.deliveredAt)) {
         updates[
           `Telecallers/${selectedTelecaller}/Delivered/${phone}/${orderId}/paid`
         ] = true;
