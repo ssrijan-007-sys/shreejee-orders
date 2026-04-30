@@ -34,7 +34,30 @@
 <script src="https://cdn.tailwindcss.com"></script>
 
 <script type="module">
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase as getDatabase2, ref as ref2, get as get2, push } 
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+
 import { db, ref, get, set, remove , onValue} from "../firebase/firebase-config.js";
+
+// ================= CALLING DASHBOARD FIREBASE =================
+
+const callingFirebaseConfig = {
+  apiKey: "AIzaSyCaFjdwtxT13RdmVau9_6JEFBEIY1xojTY",
+  authDomain: "shreejeeayucare-df742.firebaseapp.com",
+  databaseURL: "https://shreejeeayucare-df742-default-rtdb.firebaseio.com",
+  projectId: "shreejeeayucare-df742",
+  storageBucket: "shreejeeayucare-df742.firebasestorage.app",
+  messagingSenderId: "119318664445",
+  appId: "1:119318664445:web:4399d3ddd4a9decc0f5a94"
+};
+
+// ⚠️ IMPORTANT: give unique app name
+const callingApp = initializeApp(callingFirebaseConfig, "callingApp");
+
+const callingDB = getDatabase2(callingApp);
 
 searchInput.addEventListener("input", e => {
   searchQuery = e.target.value.toLowerCase();
@@ -373,6 +396,23 @@ async function openViewModal(phone) {
     <div><b>City:</b> ${c.city}</div>
     <div><b>State:</b> ${c.state}</div>
     <div><b>Pincode:</b> ${c.pin}</div>
+     <div class="mt-4">
+
+  <h3 class="font-bold mb-2">📞 Calling Remarks</h3>
+
+<!-- ✍️ INPUT BOX -->
+<input 
+  id="addRemarkInput"
+  placeholder="Add Remark..."
+  class="w-full mb-2 p-2 border rounded text-black text-sm"
+/>
+
+<!-- 📜 SCROLLABLE REMARKS -->
+<div id="callingRemarks"
+     class="max-h-40 overflow-y-auto space-y-2 bg-gray-100 p-3 rounded text-sm">
+     <div class="text-gray-500">Loading remarks...</div>
+</div>
+</div>
   `;
 
   customerOrders.innerHTML = list.map(o => {
@@ -412,7 +452,96 @@ async function openViewModal(phone) {
         ${o.awb ? `<div class="text-green-600">AWB: ${o.awb}</div>` : ""}
       </div>
     `;
+
+    
   }).join("");
+// ================= FETCH CALLING REMARKS =================
+
+const callingRemarksDiv = document.getElementById("callingRemarks");
+callingRemarksDiv.innerHTML = `<div class="text-gray-500">Loading remarks...</div>`;
+
+// 🔑 email format for calling dashboard
+const callingEmailKey = authUser.email.replace(/\./g, "_");
+
+// 📱 phone number
+const number = c.phone;
+
+// 🔥 IMPORTANT: use callingDB + ref2 + get2
+const remarksSnap = await get2(
+  ref2(callingDB, `Telecallers/${callingEmailKey}/Ordered/${number}/Remarks`)
+);
+
+if (!remarksSnap.exists()) {
+  callingRemarksDiv.innerHTML = `<div class="text-gray-500">No remarks found</div>`;
+} else {
+  const remarksData = remarksSnap.val();
+
+  const remarksList = Object.values(remarksData)
+    .sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  callingRemarksDiv.innerHTML = remarksList.map(r => `
+    <div class="bg-white p-2 rounded border">
+      <div>${r.text}</div>
+      <div class="text-xs text-gray-500">
+        ${new Date(r.time).toLocaleString()}
+      </div>
+    </div>
+  `).join("");
+}
+
+// ================= ADD NEW REMARK =================
+
+const remarkInput = document.getElementById("addRemarkInput");
+
+remarkInput.addEventListener("keypress", async (e) => {
+  if (e.key === "Enter" && remarkInput.value.trim()) {
+
+    const text = remarkInput.value.trim();
+
+    // 🔑 calling dashboard email format
+    const callingEmailKey = authUser.email.replace(/\./g, "_");
+
+    // 📱 phone number
+    const number = c.phone;
+
+    try {
+      // 🔥 PUSH to calling Firebase (SECOND PROJECT)
+      const remarksRef = ref2(
+        callingDB,
+        `Telecallers/${callingEmailKey}/Ordered/${number}/Remarks`
+      );
+
+      await set(push(remarksRef), {
+        text: text,
+        time: new Date().toISOString()
+      });
+
+      // clear input
+      remarkInput.value = "";
+
+      // optional instant UI update (without refetch)
+      const callingRemarksDiv = document.getElementById("callingRemarks");
+
+      const newRemarkHTML = `
+        <div class="bg-white p-2 rounded border">
+          <div>${text}</div>
+          <div class="text-xs text-gray-500">
+            ${new Date().toLocaleString()}
+          </div>
+        </div>
+      `;
+
+      // add on TOP
+      callingRemarksDiv.innerHTML = newRemarkHTML + callingRemarksDiv.innerHTML;
+
+    } catch (err) {
+      console.error("Failed to save remark:", err);
+      alert("❌ Failed to save remark");
+    }
+  }
+});
+
+ 
 
   viewModal.classList.remove("hidden");
 }
@@ -661,6 +790,9 @@ renderOrders();
 function openModal(){ orderModal.classList.remove("hidden"); }
 function closeModal(){  editingOrder = null;  orderModal.classList.add("hidden");}
 function logout(){ localStorage.clear(); location.href="../index.html"; }
+function goToCallingDashboard() {location.href = "../telecaller Calling portal/telecaller-dashboard.html";}
+
+
 
 pin.addEventListener("input", e => {
   if (e.target.value.length === 6) checkServiceability(e.target.value);
@@ -674,6 +806,7 @@ window.openViewModal = openViewModal;
 window.closeViewModal = closeViewModal;
 window.showCustomAlert = showCustomAlert;
 window.closeCustomAlert = closeCustomAlert;
+window.goToCallingDashboard = goToCallingDashboard;
 
 
 
@@ -1270,7 +1403,18 @@ window.reorder = reorder;
 
 <header class="flex justify-between p-4 bg-black/40">
   <div>👤 <span id="telecallerName"></span></div>
-  <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">Logout</button>
+
+  <div class="flex gap-3">
+    <button 
+      onclick="goToCallingDashboard()" 
+      class="bg-indigo-600 hover:bg-indigo-700 px-4 py-1 rounded shadow">
+      📞 Calling Dashboard
+    </button>
+
+    <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">
+      Logout
+    </button>
+  </div>
 </header>
 
 <main class="p-6">
@@ -1382,25 +1526,32 @@ window.reorder = reorder;
 
 <!-- VIEW ORDER MODAL -->
 <div id="viewModal" class="hidden fixed inset-0 bg-black/70 flex justify-center items-center z-50">
-  <div class="bg-white text-black p-6 rounded w-full max-w-2xl relative">
 
+  <div class="bg-white text-black rounded w-full max-w-2xl relative flex flex-col max-h-[90vh]">
+
+    <!-- ❌ FIXED CLOSE BUTTON -->
     <button onclick="closeViewModal()" 
-      class="absolute top-2 right-2 text-red-600 font-bold">✕</button>
+      class="absolute top-3 right-3 text-red-600 font-bold text-lg z-10">
+      ✕
+    </button>
 
-    <h2 class="text-xl font-bold mb-3">Customer Details</h2>
+    <!-- 🔥 SCROLLABLE CONTENT -->
+    <div class="p-6 overflow-y-auto">
 
-    <div id="customerDetails" class="space-y-1 mb-4"></div>
+      <h2 class="text-xl font-bold mb-3">Customer Details</h2>
 
-    <h3 class="font-bold mb-2">Order History</h3>
+      <div id="customerDetails" class="space-y-1 mb-4"></div>
 
-    <div id="customerOrders"
-      class="max-h-64 overflow-y-auto space-y-2 bg-gray-100 p-3 rounded">
+      <h3 class="font-bold mb-2">Order History</h3>
+
+      <div id="customerOrders"
+        class="max-h-64 overflow-y-auto space-y-2 bg-gray-100 p-3 rounded">
+      </div>
+
     </div>
-
   </div>
 </div>
-   
-<!-- TRACKING MODAL -->
+
 
 <!-- TRACKING MODAL -->
 <div id="trackingModal"
