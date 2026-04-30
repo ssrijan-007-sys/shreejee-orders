@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Telecaller Portal - Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb, #3b82f6, #93c5fd);
+      background-size: 400% 400%;
+      animation: bgShift 10s ease infinite;
+      font-family: 'Poppins', sans-serif;
+    }
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .glass:hover {
+      transform: scale(1.02);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .glow-input:focus {
+      outline: none;
+      box-shadow: 0 0 10px rgba(59,130,246,0.6);
+      border-color: #3b82f6;
+    }
+  </style>
+</head>
+
+<body class="flex items-center justify-center h-screen text-white">
+  <div class="glass rounded-2xl p-8 w-full max-w-sm text-center">
+    <!-- Logo -->
+    <img src="logo.png" alt="Logo" class="mx-auto h-20 w-20 rounded-full mb-3 shadow-lg object-cover" onerror="this.style.display='none'">
+
+    <h1 class="text-2xl font-bold mb-1">Telecaller Portal</h1>
+    <p class="text-blue-100 mb-6 text-sm">ShreeJee Ayucare</p>
+
+    <!-- Login Form -->
+    <form id="loginForm" class="space-y-5">
+      <input type="text" id="loginEmail" placeholder="Email or Username" class="glow-input w-full border rounded-lg p-3 bg-white/80 text-gray-800" required>
+      
+      <div class="relative">
+        <input type="password" id="loginPassword" placeholder="Password" class="glow-input w-full border rounded-lg p-3 bg-white/80 text-gray-800 pr-12" required>
+        <button type="button" id="togglePassword" class="absolute right-3 top-3 text-gray-600 hover:text-gray-900 text-xl">👁️</button>
+      </div>
+
+      <button type="submit" class="w-full py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold text-lg hover:scale-105 transition">Login</button>
+    </form>
+
+    <p id="loginError" class="text-red-200 text-sm mt-4 hidden">Invalid Email or Password</p>
+  </div>
+
+  <script>
+    // Sample Users (Replace with actual DB/API later)
+    const users = [
+      { email: "jatin@shreejee.com", password: "Jatin@123", name: "Jatin", role: "telecaller" },
+      { email: "himanshi@shreejee.com", password: "Himanshi@123", name: "Himanshi", role: "telecaller" },
+      { email: "vishal@shreejee.com", password: "Vishal@123", name: "Vishal", role: "telecaller" },
+      { email: "praveen@shreejee.com", password: "Praveen@123", name: "Praveen", role: "telecaller" },
+      { email: "yashchaudhary3672@gmail.com", password: "Yash@123", name: "Yash", role: "telecaller" },
+      { email: "shaluthakur805999@gmailcom", password: "Shalu@123", name: "Shalu", role: "telecaller" },
+      {email: "priyanshu@shreejee.com", password: "Priyanshu@123", name: "Priyanshu", role: "telecaller"},
+      { email: "srijanmishra2504@gmail.com", password: "srijan07", name: "Srijan Maalik", role: "admin" },
+      { email: "jatinkushwaha.2003@gmail.com", password: "Jatin@123", name: "Jatin", role: "admin" }
+    ];
+
+    const loginForm = document.getElementById("loginForm");
+    const loginError = document.getElementById("loginError");
+    const togglePassword = document.getElementById("togglePassword");
+    const passwordInput = document.getElementById("loginPassword");
+
+    // Password show/hide toggle
+    togglePassword.addEventListener("click", () => {
+      const type = passwordInput.type === "password" ? "text" : "password";
+      passwordInput.type = type;
+      togglePassword.textContent = type === "text" ? "🙈" : "👁️";
+    });
+
+    // Login check
+    loginForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value.trim();
+
+      const user = users.find(u => u.email === email && u.password === password);
+      if (user) {
+        localStorage.setItem("currentTelecaller", JSON.stringify(user));
+
+        if (user.role === "telecaller") {
+          window.location.href = "telecaller-dashboard.html";
+        } else if (user.role === "admin") {
+          window.location.href = "admin-dashboard.html";
+        }
+      } else {
+        loginError.classList.remove("hidden");
+      }
+    });
+  </script>
+</body>
+</html>
