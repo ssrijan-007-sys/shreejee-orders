@@ -1,0 +1,10 @@
+const firebaseConfig = {
+  apiKey: "AIzaSyCaFjdwtxT13RdmVau9_6JEFBEIY1xojTY",
+  authDomain: "shreejeeayucare-df742.firebaseapp.com",
+  databaseURL: "https://shreejeeayucare-df742-default-rtdb.firebaseio.com",
+  projectId: "shreejeeayucare-df742",
+  storageBucket: "shreejeeayucare-df742.firebasestorage.app",
+  messagingSenderId: "119318664445",
+  appId: "1:119318664445:web:4399d3ddd4a9decc0f5a94",
+  measurementId: "G-GKWG1RLZ5R"
+};

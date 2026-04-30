@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ordered Leads</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body {
+      background: linear-gradient(135deg, #2563eb, #1e3a8a, #3b82f6);
+      background-size: 300% 300%;
+      animation: bgShift 10s ease infinite;
+      font-family: "Poppins", sans-serif;
+    }
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .glass:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    select {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+    option { color: black; }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col text-white">
+
+  <!-- 🔹 NAVBAR -->
+  <nav class="flex justify-between items-center p-5 bg-white/10">
+    <h1 id="welcomeText" class="text-xl font-semibold">Welcome</h1>
+    <div class="flex items-center gap-3">
+      <button id="leadsBtn" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-md text-sm font-medium">
+        Leads
+      </button>
+      <button id="logoutBtn" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md text-sm font-medium">
+        Logout
+      </button>
+    </div>
+  </nav>
+
+  <!-- 🔹 PAGE HEADER + FILTER -->
+  <main class="flex-1 p-6">
+
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-bold">Ordered Leads</h2>
+
+      <div class="flex items-center gap-3">
+        <input
+          type="text"
+          id="searchBox"
+          placeholder="Search by Name or Number"
+          class="px-3 py-2 rounded-md text-black w-64 focus:outline-none"
+        />
+
+        <select id="filterDropdown" class="px-3 py-2 rounded-md text-white">
+          <option value="today">Today</option>
+          <option value="total">Total</option>
+          <option value="custom">Custom Range</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="orderedContainer" class="flex flex-col gap-6 overflow-y-auto max-h-[80vh] p-2">
+      <!-- DATA LOADS HERE -->
+    </div>
+  </main>
+
+  <!-- 🔹 Custom Date Range Modal -->
+  <div id="customDateModal"
+       class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white text-black rounded-lg p-5 w-80 relative">
+      <button id="closeDateModal" class="absolute top-2 right-3 text-xl">&times;</button>
+      <h3 class="text-lg font-semibold mb-4">Select Date Range</h3>
+
+      <label class="block mb-2 text-sm font-medium">From:</label>
+      <input type="date" id="fromDate" class="w-full border rounded p-2 mb-3">
+
+      <label class="block mb-2 text-sm font-medium">To:</label>
+      <input type="date" id="toDate" class="w-full border rounded p-2 mb-4">
+
+      <button id="applyDateRange"
+              class="bg-blue-500 hover:bg-blue-600 text-white w-full py-2 rounded">
+        Apply
+      </button>
+    </div>
+  </div>
+
+  <!-- 🔹 SCRIPT -->
+  <script type="module">
+    
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, remove , set} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyCaFjdwtxT13RdmVau9_6JEFBEIY1xojTY",
+  authDomain: "shreejeeayucare-df742.firebaseapp.com",
+  databaseURL: "https://shreejeeayucare-df742-default-rtdb.firebaseio.com",
+  projectId: "shreejeeayucare-df742",
+  storageBucket: "shreejeeayucare-df742.firebasestorage.app",
+  messagingSenderId: "119318664445",
+  appId: "1:119318664445:web:4399d3ddd4a9decc0f5a94",
+  measurementId: "G-GKWG1RLZ5R"
+};
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const currentTelecaller = JSON.parse(localStorage.getItem("currentTelecaller"));
+    if (!currentTelecaller?.email) window.location.href = "index.html";
+
+    const telecallerEmailKey = currentTelecaller.email.replace(/\./g, "_");
+    const welcomeText = document.getElementById("welcomeText");
+    const orderedContainer = document.getElementById("orderedContainer");
+
+    welcomeText.textContent = `Welcome, ${currentTelecaller.name || "Telecaller"}`;
+
+    const searchBox = document.getElementById("searchBox");
+    const filterDropdown = document.getElementById("filterDropdown");
+
+
+    let customRange = null;
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    }
+
+    // 🔹 FETCH ORDERED LEADS
+    const orderedRef = ref(db, `Telecallers/${telecallerEmailKey}/Ordered`);
+    onValue(orderedRef, (snapshot) => renderOrdered(snapshot));
+
+    function renderOrdered(snapshot) {
+      orderedContainer.innerHTML = "";
+
+      if (!snapshot.exists()) {
+        orderedContainer.innerHTML = `<p class="text-center text-white/70 py-10">No Ordered Leads</p>`;
+        return;
+      }
+
+      let data = Object.entries(snapshot.val()).map(([number, lead]) => ({
+        number,
+        name: lead.Name || "—",
+        problem: lead.Problem || "—",
+        date: lead["Follow-Up Date"] || lead["Order Date"] || "",
+        time: lead["Follow-Up Time"] || lead["Order Time"] || "",
+      }));
+
+      // 🔍 SEARCH
+      const searchTerm = searchBox.value.toLowerCase();
+      if (searchTerm) {
+        data = data.filter(l => l.name.toLowerCase().includes(searchTerm) || l.number.includes(searchTerm));
+      }
+
+      const filter = filterDropdown.value;
+      const today = new Date().toISOString().split("T")[0];
+
+      // 📅 FILTER LOGIC
+      if (filter === "today") {
+        data = data.filter(l => l.date === today);
+      } else if (filter === "custom" && customRange) {
+        data = data.filter(l => {
+          const d = new Date(l.date);
+          return d >= customRange.from && d <= customRange.to;
+        });
+      }
+
+      // 🔹 GROUP BY DATE
+      const grouped = {};
+      data.forEach(l => {
+        if (!grouped[l.date]) grouped[l.date] = [];
+        grouped[l.date].push(l);
+      });
+
+      const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+
+      sortedDates.forEach(dateKey => {
+        const section = document.createElement("div");
+
+        const heading = document.createElement("h3");
+        heading.className = "text-lg font-semibold mb-3 border-b border-white/20 pb-1";
+        heading.textContent = formatDate(dateKey);
+        section.appendChild(heading);
+
+        grouped[dateKey].forEach(l => {
+          const card = document.createElement("div");
+          card.className = "glass p-4 rounded-lg mb-3";
+
+          card.innerHTML = `
+            <p><strong>Name:</strong> ${l.name}</p>
+            <p><strong>Number:</strong> ${l.number}</p>
+            <p><strong>Problem:</strong> ${l.problem}</p>
+            <p><strong>Ordered Date:</strong> ${l.date}</p>
+            <p><strong>Ordered Time:</strong> ${l.time}</p>
+
+            <div class="flex justify-end mt-2">
+              <button class="removeOrdered bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-sm"
+                      data-number="${l.number}">
+                Remove
+              </button>
+            </div>
+          `;
+
+          section.appendChild(card);
+        });
+
+        orderedContainer.appendChild(section);
+      });
+    }
+
+    // 🔹 Search
+    searchBox.addEventListener("input", () => onValue(orderedRef, s => renderOrdered(s)));
+
+    // 🔹 Filter Handling
+    filterDropdown.addEventListener("change", (e) => {
+      if (e.target.value === "custom") {
+        document.getElementById("customDateModal").classList.remove("hidden");
+      } else {
+        customRange = null;
+        onValue(orderedRef, s => renderOrdered(s));
+      }
+    });
+
+    // 🔹 Custom Date Apply
+    document.getElementById("applyDateRange").addEventListener("click", () => {
+      const from = new Date(document.getElementById("fromDate").value);
+      const to = new Date(document.getElementById("toDate").value);
+
+      if (!isNaN(from) && !isNaN(to)) {
+        customRange = { from, to };
+      }
+
+      document.getElementById("customDateModal").classList.add("hidden");
+      onValue(orderedRef, s => renderOrdered(s));
+    });
+
+    document.getElementById("closeDateModal").addEventListener("click", () => {
+      document.getElementById("customDateModal").classList.add("hidden");
+    });
+
+    // ================================
+// 🔴 Remove Ordered Lead – Confirm Modal Logic
+// ================================
+
+let pendingRemoveNumber = null;
+
+const confirmRemoveModal = document.getElementById("confirmRemoveModal");
+const confirmRemoveBtn = document.getElementById("confirmRemove");
+const cancelRemoveBtn = document.getElementById("cancelRemove");
+
+// Open confirm modal when Remove button is clicked
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("removeOrdered")) {
+    pendingRemoveNumber = e.target.getAttribute("data-number");
+    confirmRemoveModal.classList.remove("hidden");
+  }
+});
+
+// Confirm remove
+confirmRemoveBtn.addEventListener("click", async () => {
+  if (!pendingRemoveNumber) return;
+
+  try {
+    await remove(
+      ref(db, `Telecallers/${telecallerEmailKey}/Ordered/${pendingRemoveNumber}`)
+    );
+  } catch (err) {
+    console.error("Failed to remove ordered lead:", err);
+  }
+
+  pendingRemoveNumber = null;
+  confirmRemoveModal.classList.add("hidden");
+});
+
+// Cancel remove
+cancelRemoveBtn.addEventListener("click", () => {
+  pendingRemoveNumber = null;
+  confirmRemoveModal.classList.add("hidden");
+});
+
+
+    // 🔹 Navbar
+    document.getElementById("leadsBtn").addEventListener("click", () => {
+      window.location.href = "telecaller-dashboard.html";
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      window.location.href = "index.html";
+    });
+
+
+    import {
+  onDisconnect,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const statusRef = ref(db, `Telecallers/${telecallerEmailKey}/Status`);
+const lastActiveRef = ref(db, `Telecallers/${telecallerEmailKey}/LastActive`);
+
+// ✅ Mark online immediately
+set(statusRef, true);
+set(lastActiveRef, serverTimestamp());
+
+// ✅ Mark offline ONLY if connection truly drops
+onDisconnect(statusRef).set(false);
+onDisconnect(lastActiveRef).set(serverTimestamp());
+
+  </script>
+<!-- 🔴 Confirm Remove Modal -->
+<div id="confirmRemoveModal"
+     class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+  <div class="bg-white text-black rounded-lg p-5 w-80">
+    <h3 class="text-lg font-semibold mb-3">Confirm Removal</h3>
+    <p class="text-sm mb-4">
+      Are you sure you want to remove this ordered lead?
+    </p>
+
+    <div class="flex justify-end gap-3">
+      <button id="cancelRemove"
+              class="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">
+        Cancel
+      </button>
+      <button id="confirmRemove"
+              class="px-4 py-2 rounded bg-red-500 hover:bg-red-600 text-white">
+        Remove
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

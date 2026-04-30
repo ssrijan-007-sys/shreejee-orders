@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telecaller Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #2563eb, #1e3a8a, #3b82f6);
+      background-size: 300% 300%;
+      animation: bgShift 10s ease infinite;
+      font-family: "Poppins", sans-serif;
+    }
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .glass:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    select {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+    option { color: black; }
+
+    /* simple modal styles for confirm/message */
+    .modal-btn { padding: .5rem .75rem; border-radius: .375rem; }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col text-white">
+  <!-- Navbar -->
+  <nav class="flex justify-between items-center p-5 bg-white/10">
+  <h1 id="welcomeText" class="text-xl font-semibold">Welcome</h1>
+
+  <div class="flex items-center gap-3">
+
+    <!-- 🔙 BACK BUTTON -->
+    <button 
+      onclick="goToOrdersDashboard()" 
+      class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-md text-sm font-medium">
+      📦 Orders Dashboard
+    </button>
+
+    <button id="orderedBtn" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-md text-sm font-medium">
+      Ordered
+    </button>
+
+    <button id="followupBtn" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-md text-sm font-medium">
+      Followups
+    </button>
+
+    <button id="pendingBtn" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-md text-sm font-medium">
+      Pending
+    </button>
+
+    <button id="logoutBtn" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md text-sm font-medium">
+      Logout
+    </button>
+  </div>
+</nav>
+
+  <!-- Main Content -->
+  <main class="flex-1 p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-bold">Leads</h2>
+      <div class="flex gap-3 items-center">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search by name or number..."
+          class="px-3 py-2 rounded-md text-black w-60"
+        />
+        <select id="filterSelect" class="px-3 py-2 rounded-md text-black">
+          <option value="today" selected>Today</option>
+          <option value="total">Total</option>
+          <option value="notPicked">Not Picked</option>
+          <option value="remaining">Not Called / Remaining</option>
+          <option value="custom">Custom Date Range</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="leadsContainer" class="flex flex-col gap-6 overflow-y-auto max-h-[80vh] p-2">
+      <!-- Leads grouped by date will appear here -->
+    </div>
+  </main>
+
+  <!-- Date Range Modal -->
+  <div id="dateRangeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white text-black rounded-lg p-6 w-80 relative">
+      <h3 class="text-lg font-semibold mb-4">Select Date Range</h3>
+      <label class="block mb-2 text-sm font-medium">From:</label>
+      <input type="date" id="fromDate" class="border rounded w-full p-2 mb-3" />
+      <label class="block mb-2 text-sm font-medium">To:</label>
+      <input type="date" id="toDate" class="border rounded w-full p-2 mb-4" />
+      <div class="flex justify-end gap-3">
+        <button id="cancelDateRange" class="bg-gray-300 px-4 py-2 rounded">Cancel</button>
+        <button id="applyDateRange" class="bg-blue-500 text-white px-4 py-2 rounded">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remarks Modal -->
+  <div id="remarksModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white text-black rounded-lg w-96 max-h-[70vh] overflow-y-auto p-5 relative">
+      <button id="closeRemarks" class="absolute top-2 right-3 text-xl text-gray-500 hover:text-black">&times;</button>
+      <h3 id="remarksTitle" class="text-lg font-bold mb-3">Remarks</h3>
+      <ul id="remarksList" class="space-y-2"></ul>
+    </div>
+  </div>
+
+  <!-- Confirm Modal (used for Not Interested / Ordered) -->
+  <div id="confirmModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-60">
+    <div class="bg-white text-black rounded-lg p-6 w-80 relative">
+      <h3 id="confirmTitle" class="text-lg font-semibold mb-2">Confirm</h3>
+      <p id="confirmMessage" class="text-sm text-gray-700 mb-4">Are you sure?</p>
+      <div class="flex justify-end gap-3">
+        <button id="confirmCancel" class="modal-btn bg-gray-300">Cancel</button>
+        <button id="confirmOk" class="modal-btn bg-red-500 text-white">Yes, proceed</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Modal -->
+  <div id="messageModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-60">
+    <div class="bg-white text-black rounded-lg p-6 w-72 relative text-center">
+      <p id="messageText" class="text-gray-800 mb-4">Message</p>
+      <button id="messageOk" class="modal-btn bg-blue-500 text-white">OK</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      onValue,
+      update,
+      push,
+      set,
+      get,
+      onDisconnect,
+      serverTimestamp,
+      remove
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // 🔥 Firebase Config
+    const firebaseConfig = {
+  apiKey: "AIzaSyCaFjdwtxT13RdmVau9_6JEFBEIY1xojTY",
+  authDomain: "shreejeeayucare-df742.firebaseapp.com",
+  databaseURL: "https://shreejeeayucare-df742-default-rtdb.firebaseio.com",
+  projectId: "shreejeeayucare-df742",
+  storageBucket: "shreejeeayucare-df742.firebasestorage.app",
+  messagingSenderId: "119318664445",
+  appId: "1:119318664445:web:4399d3ddd4a9decc0f5a94",
+  measurementId: "G-GKWG1RLZ5R"
+};
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const currentTelecaller = JSON.parse(localStorage.getItem("currentTelecaller"));
+    if (!currentTelecaller || !currentTelecaller.email) window.location.href = "index.html";
+
+    const telecallerEmailKey = currentTelecaller.email.replace(/\./g, "_");
+    const welcomeText = document.getElementById("welcomeText");
+    const leadsContainer = document.getElementById("leadsContainer");
+    const searchInput = document.getElementById("searchInput");
+    const filterSelect = document.getElementById("filterSelect");
+
+    welcomeText.textContent = `Welcome, ${currentTelecaller.name || "Telecaller"}`;
+
+    let allLeads = {};
+    let dateFilter = "today";
+    let customRange = null;
+    const MAX_ATTEMPTS = 2;
+    const telecallerRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads`);
+
+    onValue(telecallerRef, (snapshot) => {
+  allLeads = snapshot.exists() ? snapshot.val() : {};
+
+  Object.entries(allLeads).forEach(([num, data]) => {
+    if (data.attempt === undefined) {
+      update(ref(db, `Telecallers/${telecallerEmailKey}/Leads/${num}`), {
+        attempt: 0
+      });
+    }
+  });
+
+  renderLeads();
+});
+
+    // Confirm modal helpers
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmMessage = document.getElementById('confirmMessage');
+    const confirmCancel = document.getElementById('confirmCancel');
+    const confirmOk = document.getElementById('confirmOk');
+    let confirmAction = null;
+    let confirmPayload = null;
+
+    function showConfirm(title, message, action, payload) {
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmAction = action;
+      confirmPayload = payload;
+      confirmModal.classList.remove('hidden');
+    }
+
+    confirmCancel.addEventListener('click', () => {
+      confirmModal.classList.add('hidden');
+      confirmAction = null; confirmPayload = null;
+    });
+
+    confirmOk.addEventListener('click', async () => {
+      confirmModal.classList.add('hidden');
+      if (typeof confirmAction === 'function') {
+        try { await confirmAction(confirmPayload); } catch (e) { console.error('Confirm action failed', e); }
+      }
+      confirmAction = null; confirmPayload = null;
+    });
+
+    // Message modal helpers
+    const messageModal = document.getElementById('messageModal');
+    const messageText = document.getElementById('messageText');
+    const messageOk = document.getElementById('messageOk');
+    function showMessage(msg) {
+      messageText.textContent = msg;
+      messageModal.classList.remove('hidden');
+    }
+    messageOk.addEventListener('click', () => messageModal.classList.add('hidden'));
+
+    // ✅ Filtering and Searching
+    filterSelect.addEventListener("change", (e) => {
+      dateFilter = e.target.value;
+      if (dateFilter === "custom") {
+        document.getElementById("dateRangeModal").classList.remove("hidden");
+      } else {
+        renderLeads();
+      }
+    });
+
+    document.getElementById("cancelDateRange").addEventListener("click", () => {
+      document.getElementById("dateRangeModal").classList.add("hidden");
+      filterSelect.value = "today";
+      dateFilter = "today";
+      renderLeads();
+    });
+
+    document.getElementById("applyDateRange").addEventListener("click", () => {
+      const from = document.getElementById("fromDate").value;
+      const to = document.getElementById("toDate").value;
+      if (from && to) {
+        customRange = { from: new Date(from), to: new Date(to) };
+        document.getElementById("dateRangeModal").classList.add("hidden");
+        renderLeads();
+      }
+    });
+
+    searchInput.addEventListener("input", () => renderLeads());
+
+    // ✅ Render leads with filters
+    function renderLeads() {
+      leadsContainer.innerHTML = "";
+      let leadsArray = Object.entries(allLeads).map(([number, data]) => ({ number, ...data }));
+
+      // Apply search filter
+      const searchVal = searchInput.value.toLowerCase();
+      if (searchVal) {
+        leadsArray = leadsArray.filter(l =>
+          (l.Name || "").toLowerCase().includes(searchVal) ||
+          l.number.includes(searchVal)
+        );
+      }
+
+      // Apply date filter
+const now = new Date();
+if (dateFilter === "today") {
+  leadsArray = leadsArray.filter(l => {
+    const d = new Date(l.Time);
+    return d.toDateString() === now.toDateString();
+  });
+} else if (dateFilter === "notPicked") {
+  leadsArray = leadsArray.filter(l => l.Status === "Not Picked");
+} else if (dateFilter === "remaining") {
+  leadsArray = leadsArray.filter(l => l.Status === "Not Called");
+} else if (dateFilter === "custom" && customRange) {
+  leadsArray = leadsArray.filter(l => {
+    const d = new Date(l.Time);
+    const fromDate = new Date(customRange.from.setHours(0, 0, 0, 0));
+    const toDate = new Date(customRange.to.setHours(23, 59, 59, 999));
+    return d >= fromDate && d <= toDate;
+  });
+}
+
+
+      // Group by date
+      const groupedByDate = {};
+      leadsArray.forEach(lead => {
+        if (!lead.Time) return;
+        const datePart = new Date(lead.Time).toDateString();
+        if (!groupedByDate[datePart]) groupedByDate[datePart] = [];
+        groupedByDate[datePart].push(lead);
+      });
+
+      const sortedDates = Object.keys(groupedByDate).sort((a, b) => new Date(b) - new Date(a));
+
+      if (sortedDates.length === 0) {
+        leadsContainer.innerHTML = `<p class="text-center text-white/70 mt-10">No Leads Found</p>`;
+        return;
+      }
+
+      sortedDates.forEach(dateKey => {
+        const section = document.createElement("div");
+        section.innerHTML = `<h3 class="text-lg font-semibold mb-3 border-b border-white/20 pb-1">${new Date(dateKey).toDateString()}</h3>`;
+        groupedByDate[dateKey]
+          .sort((a, b) => new Date(b.Time) - new Date(a.Time))
+          .forEach(lead => {
+            const card = document.createElement("div");
+            card.className = "glass p-4 rounded-lg shadow-md mb-3";
+            const currentStatus = lead.Status || "Not Called";
+            const attempt = lead.attempt || 0;
+            card.innerHTML = `
+              <div class="flex justify-between items-center mb-2">
+                <div class="flex items-center gap-2">
+                  <h4 class="text-lg font-semibold">${lead.Name || "Unknown"}</h4>
+                  <button class="text-yellow-400 hover:text-yellow-300 text-sm font-semibold" data-edit="${lead.number}">✏️</button>
+                </div>
+                <select data-status="${lead.number}" class="rounded-md text-sm px-2 py-1">
+                  <option ${currentStatus === "Not Called" ? "selected" : ""}>Not Called</option>
+                  <option ${currentStatus === "Not Interested" ? "selected" : ""}>Not Interested</option>
+                  <option ${currentStatus === "Picked" ? "selected" : ""}>Picked</option>
+                  <option ${currentStatus === "Not Picked" ? "selected" : ""}>Not Picked</option>
+                  <option ${currentStatus === "Ordered" ? "selected" : ""}>Ordered</option>
+                </select>
+              </div>
+              <p><strong>Number:</strong> ${lead.number}</p>
+              <p><strong>Problem:</strong> ${lead.Problem || "—"}</p>
+              <p><strong>Time:</strong> ${new Date(lead.Time).toLocaleTimeString()}</p>
+              <input type="text" placeholder="Add a remark..." data-remark="${lead.number}" class="w-full mt-2 bg-white/10 border border-white/30 rounded px-3 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              ${attempt > 0 && attempt <= MAX_ATTEMPTS ? `
+              <button class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded mt-2 attemptBtn"
+              data-number="${lead.number}"
+              data-attempt="${attempt}">
+              📞 Call Again (${attempt}/${MAX_ATTEMPTS})
+              </button>
+              ` : ""}
+                              <div class="flex justify-end mt-2">
+                <button data-view="${lead.number}" class="bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded text-sm">View</button>
+                <button class="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1 rounded-md followupBtn" 
+          data-number="${lead.number}" 
+          data-name="${lead.Name || ''}">
+    Follow-up
+  </button>
+                </div>
+
+            `;
+
+
+            const attemptBtn = card.querySelector(".attemptBtn");
+
+if (attemptBtn) {
+  attemptBtn.addEventListener("click", async () => {
+
+    const number = attemptBtn.dataset.number;
+    const attempt = parseInt(attemptBtn.dataset.attempt);
+
+    const leadRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads/${number}`);
+
+    if (attempt + 1 < MAX_ATTEMPTS) {
+    
+      const newAttempt = Math.min(attempt + 1, MAX_ATTEMPTS);
+      await update(leadRef, {
+        attempt: newAttempt,
+        Status: "Not Called"
+      });
+
+      showMessage(`Attempt ${attempt + 1} recorded. Try calling again.`);
+      renderLeads();
+    } else {
+
+      showConfirm(
+        "Move to Not Picked",
+        "Maximum attempts reached. Move lead to NotPicked list?",
+        async () => {
+
+          const snap = await get(leadRef);
+          if (!snap.exists()) return;
+
+          const leadData = snap.val();
+
+          await set(
+            ref(db, `Telecallers/${telecallerEmailKey}/NotPicked/${number}`),
+            {
+              ...leadData,
+              Status: "Not Picked",
+              MovedAt: new Date().toISOString(),
+              attempt: 0
+            }
+          );
+
+          await remove(leadRef);
+
+          showMessage("Lead moved to NotPicked.");
+        }
+      );
+
+    }
+
+  });
+}
+            // ✅ Event handlers
+            card.querySelector(`[data-status="${lead.number}"]`).addEventListener("change", async (e) => {
+  const newStatus = e.target.value;
+  const number = lead.number;
+  const leadRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads/${number}`);
+
+if (newStatus === "Picked") {
+
+  await update(leadRef, {
+    Status: "Picked"
+  });
+
+
+  return;
+}
+
+if (newStatus === "Not Picked") {
+
+  e.target.value = lead.Status || "Not Called";
+
+  const attempt = lead.attempt || 0;
+
+  const leadRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads/${number}`);
+
+  await update(leadRef, {
+    attempt: attempt + 1,
+    Status: "Not Picked"
+  });
+
+  showMessage(`Attempt ${attempt + 1} recorded. Use Call Again button.`);
+
+  return;
+}
+
+// =================================
+  // 🚨 CASE 1: ORDERED — move lead
+  // =================================
+  if (newStatus === "Ordered") {
+    // revert select visually until confirmed
+    e.target.value = lead.Status || "Not Called";
+
+    showConfirm('Mark as Ordered', 'This will move the lead to Ordered. Continue?', async () => {
+      try {
+        const now = new Date();
+        const orderedRef = ref(db, `Telecallers/${telecallerEmailKey}/Ordered/${number}`);
+
+        const orderedData = {
+          ...lead,
+          "Order Date": now.toISOString().split('T')[0],
+          "Order Time": now.toTimeString().slice(0,5),
+          Status: 'Ordered'
+        };
+
+        await set(orderedRef, orderedData);
+        // Delete from Telecaller leads
+        await set(leadRef, null);
+        showMessage('Lead moved to Ordered!');
+      } catch (err) {
+        console.error(err);
+        showMessage('Failed to move lead to Ordered (see console)');
+      }
+    });
+
+    return;
+  }
+
+  // =============================================
+  // 🚨 CASE 2: NOT INTERESTED — delete permanently
+  // =============================================
+  if (newStatus === "Not Interested") {
+    // revert select visually until confirmed
+    e.target.value = lead.Status || "Not Called";
+
+    showConfirm('Delete lead', 'Marking as Not Interested will delete this lead forever. Continue?', async () => {
+      try {
+        await set(leadRef, null);
+        showMessage('Lead deleted permanently.');
+      } catch (err) {
+        console.error(err);
+        showMessage('Failed to delete lead (see console)');
+      }
+    });
+
+    return;
+  }
+});
+
+            card.querySelector(`[data-edit="${lead.number}"]`).addEventListener("click", () => {
+              const newName = prompt("Edit Lead Name:", lead.Name || "");
+              if (newName) update(ref(db, `Telecallers/${telecallerEmailKey}/Leads/${lead.number}`), { Name: newName });
+            });
+            card.querySelector(`[data-remark="${lead.number}"]`).addEventListener("keypress", e => {
+              if (e.key === "Enter" && e.target.value.trim()) {
+                const remarkText = e.target.value.trim();
+                const remarkRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads/${lead.number}/Remarks`);
+                set(push(remarkRef), { text: remarkText, time: new Date().toISOString() });
+                e.target.value = "";
+              }
+            });
+            card.querySelector(`[data-view="${lead.number}"]`).addEventListener("click", () => openRemarksModal(lead.number, lead.Name));
+            section.appendChild(card);
+          });
+        leadsContainer.appendChild(section);
+      });
+    }
+
+    // ✅ Remarks Modal Logic
+    const remarksModal = document.getElementById("remarksModal");
+    const remarksList = document.getElementById("remarksList");
+    const remarksTitle = document.getElementById("remarksTitle");
+    document.getElementById("closeRemarks").addEventListener("click", () => remarksModal.classList.add("hidden"));
+
+    function openRemarksModal(number, name) {
+      remarksList.innerHTML = "";
+      remarksTitle.textContent = `Remarks for ${name} (${number})`;
+      remarksModal.classList.remove("hidden");
+      const remarksRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads/${number}/Remarks`);
+      onValue(remarksRef, snapshot => {
+        remarksList.innerHTML = snapshot.exists()
+          ? Object.values(snapshot.val())
+              .sort((a, b) => new Date(b.time) - new Date(a.time))
+              .map(r => `<li class="bg-gray-100 p-2 rounded mb-2"><p>${r.text}</p><p class="text-xs text-gray-500">${new Date(r.time).toLocaleString()}</p></li>`)
+              .join("")
+          : `<li class="text-gray-500 text-center">No remarks yet.</li>`;
+      });
+    }
+
+    // ✅ Logout + Followups
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      update(ref(db, `Telecallers/${telecallerEmailKey}`), { Status: false });
+      localStorage.removeItem("currentTelecaller");
+      window.location.href = "index.html";
+    });
+    document.getElementById("followupBtn").addEventListener("click", () => {
+      window.location.href = "followups.html";
+    });
+    document.getElementById("orderedBtn").addEventListener("click", () => {
+      window.location.href = "ordered.html";
+    });
+    document.getElementById("pendingBtn").addEventListener("click", () => {
+      window.location.href = "pending.html";
+    });
+    function goToOrdersDashboard() {location.href = "../telecaller/telecaller-dashboard.html";}
+    window.goToOrdersDashboard = goToOrdersDashboard;
+   // =============== FOLLOW-UP MODAL HANDLING ===============
+
+const followupModal = document.getElementById("followupModal");
+const followupNumberEl = document.getElementById("followupNumber");
+const followupNameEl = document.getElementById("followupName");
+const followupDateEl = document.getElementById("followupDate");
+const followupTimeEl = document.getElementById("followupTime");
+
+let selectedFollowup = null;
+
+// Open follow-up modal
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("followupBtn")) {
+    selectedFollowup = {
+      number: e.target.dataset.number,
+      name: e.target.dataset.name
+    };
+    followupNumberEl.textContent = selectedFollowup.number;
+    followupNameEl.textContent = selectedFollowup.name || "—";
+    followupDateEl.value = "";
+    followupTimeEl.value = "";
+    followupModal.classList.remove("hidden");
+  }
+});
+
+// Cancel button
+document.getElementById("cancelFollowup").addEventListener("click", () => {
+  followupModal.classList.add("hidden");
+  selectedFollowup = null;
+});
+
+// Save follow-up — MOVES the lead into Followups (instead of COPY)
+document.getElementById("saveFollowup").addEventListener("click", async () => {
+  if (!selectedFollowup) return;
+  const followupDate = followupDateEl.value;
+  const followupTime = followupTimeEl.value;
+
+  if (!followupDate || !followupTime) {
+    alert("⚠️ Please select both date and time!");
+    return;
+  }
+
+  const safeEmail = currentTelecaller.email.replace(/\./g, "_");
+  const leadRef = ref(db, `Telecallers/${safeEmail}/Leads/${selectedFollowup.number}`);
+  const followupRef = ref(db, `Telecallers/${safeEmail}/Followups/${selectedFollowup.number}`);
+
+  try {
+    // Read the existing lead (if any)
+    const snap = await get(leadRef);
+    const leadData = snap.exists() ? snap.val() : { Name: selectedFollowup.name || "—", number: selectedFollowup.number };
+
+    // Merge follow-up info into the lead object
+    const newFollowupData = {
+      ...leadData,
+      Name: leadData.Name || selectedFollowup.name || "—",
+      number: selectedFollowup.number,
+      "Follow-Up Date": followupDate,
+      "Follow-Up Time": followupTime,
+      // keep original Time if present — otherwise use now
+      Time: leadData.Time || new Date().toISOString()
+    };
+
+    // Write to Followups (MOVE semantics)
+    await set(followupRef, newFollowupData);
+
+    // Remove original lead from Leads
+    await set(leadRef, null);
+
+    alert("✅ Follow-up saved and lead moved successfully!");
+    followupModal.classList.add("hidden");
+    selectedFollowup = null;
+  } catch (err) {
+    console.error("Failed to save followup:", err);
+    alert("❌ Could not save follow-up. Check console for errors.");
+  }
+});
+
+// ===============================
+// ✅ Follow-up Notification Logic (with Debug Logs)
+// ===============================
+function checkDueFollowups() {
+  console.log("⏱️ Checking for due followups...");
+  const followupsRef = ref(db, `Telecallers/${telecallerEmailKey}/Followups`);
+  
+  onValue(followupsRef, (snapshot) => {
+    let dueCount = 0;
+
+    if (snapshot.exists()) {
+      const followups = snapshot.val();
+      const now = new Date();
+      console.log("📦 Found followups:", followups);
+
+      Object.entries(followups).forEach(([number, data]) => {
+        const dateStr = data["Follow-Up Date"];
+        const timeStr = data["Follow-Up Time"];
+        const name = data["Name"];
+
+        if (!dateStr || !timeStr) {
+          console.log(`⚠️ Skipping ${number} - missing date/time`);
+          return;
+        }
+
+        // Convert strings to a Date object
+        const [year, month, day] = dateStr.split("-").map(Number);
+        const [hour, minute] = timeStr.split(":").map(Number);
+        const followupDateTime = new Date(year, month - 1, day, hour, minute);
+
+        const diff = now - followupDateTime;
+        console.log(`📅 Lead: ${name} (${number}) | Follow-up: ${followupDateTime.toLocaleString()} | Diff(ms): ${diff}`);
+
+        // If followup is due now or overdue, count it
+        if (diff >= 0) {
+          dueCount++;
+          console.log(`🚨 Followup due now for ${name} (${number})`);
+          // Still show popup only once per day per (date+time)
+          showFollowupPopup(number, name, dateStr, timeStr);
+        }
+      });
+    } else {
+      console.log("❌ No followups found in Firebase.");
+    }
+
+    // ✅ Update or create badge (always shows current due count)
+    let badge = document.getElementById("followupBadge");
+    if (!badge) {
+      const followupBtn = document.getElementById("followupBtn");
+      badge = document.createElement("span");
+      badge.id = "followupBadge";
+      badge.className =
+        "absolute top-1 right-1 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full hidden";
+      followupBtn.classList.add("relative");
+      followupBtn.appendChild(badge);
+      console.log("🆕 Created followup badge element");
+    }
+
+    badge.textContent = dueCount;
+    badge.classList.toggle("hidden", dueCount === 0);
+    console.log(`🔴 Badge updated — Due Count: ${dueCount}`);
+  });
+}
+
+// ==================== FOLLOW-UP POPUP CONTROL ====================
+
+// 🧠 Track shown popups (number + date + time)
+function hasPopupShownToday(number, followDate, followTime) {
+  const today = new Date().toDateString();
+  const key = `${number}_${followDate}_${followTime}`;
+  const shownData = JSON.parse(localStorage.getItem("shownFollowups") || "{}");
+
+  // Clean outdated entries
+  for (const id in shownData) {
+    if (shownData[id].date !== today) {
+      delete shownData[id];
+    }
+  }
+
+  localStorage.setItem("shownFollowups", JSON.stringify(shownData));
+  return shownData[key];
+}
+
+function markPopupAsShown(number, followDate, followTime) {
+  const today = new Date().toDateString();
+  const key = `${number}_${followDate}_${followTime}`;
+  const shownData = JSON.parse(localStorage.getItem("shownFollowups") || "{}");
+  shownData[key] = { date: today, shown: true };
+  localStorage.setItem("shownFollowups", JSON.stringify(shownData));
+}
+
+// 🗣️ Popup + voice alert (only once per follow-up time per day)
+function showFollowupPopup(number, name, followDate, followTime) {
+  console.log(`🔔 Trying popup for ${name} (${number}) - ${followDate} ${followTime}`);
+
+  if (hasPopupShownToday(number, followDate, followTime)) {
+    console.log(`⚠️ Popup for ${number} on ${followDate} ${followTime} already shown today — skipping.`);
+    return;
+  }
+
+  markPopupAsShown(number, followDate, followTime);
+  console.log(`✅ Marked ${number} ${followDate} ${followTime} as shown today.`);
+
+  // Overlay
+  const overlay = document.createElement("div");
+  overlay.className = "followup-popup fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50";
+
+  // Popup box
+  const popup = document.createElement("div");
+  popup.className = "bg-white text-gray-800 p-6 rounded-2xl shadow-xl text-center w-[350px] relative"; // removed animation
+
+  popup.innerHTML = `
+    <button id="closePopup" class="absolute top-2 right-3 text-gray-500 hover:text-red-500 text-2xl font-bold">&times;</button>
+    <h2 class="text-2xl font-bold text-red-600 mb-2">🚨 Don't Miss Your Follow-Up!</h2>
+    <p class="text-lg mb-2">Lead: <span class="font-semibold">${name}</span></p>
+    <p class="text-lg mb-2">Number: <span class="font-semibold">${number}</span></p>
+    <p class="text-sm text-gray-600">Please contact this lead now.</p>
+  `;
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  // 🗣️ Voice alert — says “Follow up” until closed
+  const speakFollowup = () => {
+    const utter = new SpeechSynthesisUtterance("Follow up");
+    utter.pitch = 1;
+    utter.rate = 0.9;
+    utter.volume = 1;
+    speechSynthesis.speak(utter);
+  };
+
+  speakFollowup();
+  const voiceInterval = setInterval(() => {
+    speakFollowup();
+  }, 4000);
+
+  document.getElementById("closePopup").addEventListener("click", () => {
+    clearInterval(voiceInterval);
+    speechSynthesis.cancel();
+    overlay.remove();
+  });
+}
+
+// ✅ Check every 60 seconds
+console.log("🕒 Starting periodic followup check every 60 seconds...");
+setInterval(checkDueFollowups, 60000);
+checkDueFollowups();
+
+
+// ===============================
+//  TELECALLER ONLINE / OFFLINE + AUTO LOGOUT
+// ===============================
+
+
+// =====================================================
+// ⭐ CLEAN + FINAL TELECALLER STATUS SYSTEM ⭐
+// =====================================================
+
+// Track server-side LastActive
+function updateLastActive() {
+  const lastActiveRef = ref(db, `Telecallers/${telecallerEmailKey}/LastActive`);
+  set(lastActiveRef, serverTimestamp());
+  console.log("⏳ LastActive updated (server)");
+}
+
+// store server offset
+const offsetRef = ref(db, '.info/serverTimeOffset');
+let serverOffset = 0;
+onValue(offsetRef, snap => {
+  serverOffset = snap.val() || 0;
+  console.log('🌐 serverTimeOffset (ms):', serverOffset);
+});
+
+// 1️⃣ Mark ONLINE immediately + schedule REAL auto-offline on disconnect
+async function markOnline() {
+  if (!telecallerEmailKey) return;
+
+  const statusRef = ref(db, `Telecallers/${telecallerEmailKey}/Status`);
+  const lastActiveRef = ref(db, `Telecallers/${telecallerEmailKey}/LastActive`);
+
+  // Set online
+  await set(statusRef, true);
+  await set(lastActiveRef, serverTimestamp());
+  console.log("🟢 ONLINE set");
+
+  // Auto offline if tab suddenly closes (server-side)
+  onDisconnect(statusRef).set(false);
+  onDisconnect(lastActiveRef).set(serverTimestamp());
+}
+
+
+// 2️⃣ Detect Firebase activity (Leads & Followups → real activity)
+function startActivityListeners() {
+  const leadsRef = ref(db, `Telecallers/${telecallerEmailKey}/Leads`);
+  const followupsRef = ref(db, `Telecallers/${telecallerEmailKey}/Followups`);
+
+  onValue(leadsRef, () => {
+    updateLastActive();
+    console.log("🔥 Leads changed → activity updated");
+  });
+
+  onValue(followupsRef, () => {
+    updateLastActive();
+    console.log("🔥 Followups changed → activity updated");
+  });
+}
+
+
+// 3️⃣ Auto Logout by checking REAL server time reliably (20 minutes)
+function startInactivityWatcher() {
+  const lastActiveRef = ref(db, `Telecallers/${telecallerEmailKey}/LastActive`);
+
+  // periodic check every 60s using server offset
+  setInterval(async () => {
+    try {
+      const snap = await get(lastActiveRef);
+      const lastActive = snap.exists() ? snap.val() : null;
+      if (!lastActive) return;
+
+      const serverNow = Date.now() + serverOffset;
+      const diff = serverNow - lastActive;
+      console.log("⏱ Inactivity Minutes:", Math.floor(diff / 60000));
+
+      // 20-minute inactivity logout
+      if (diff >= 20 * 60 * 1000) {
+        console.log("⛔ Auto Logout Triggered (20 mins inactive)");
+        forceLogout();
+      }
+    } catch (err) {
+      console.warn("Could not check lastActive:", err);
+    }
+  }, 60000);
+}
+
+
+// 4️⃣ LOGOUT — using SDK set first then sendBeacon as fallback so it works on Android & laptop
+async function forceLogout() {
+  try {
+    const statusRef = ref(db, `Telecallers/${telecallerEmailKey}/Status`);
+    // Prefer SDK update (guaranteed while online)
+    await set(statusRef, false);
+    console.log("🔴 Logged out via SDK");
+  } catch (err) {
+    console.warn("SDK logout failed, will try sendBeacon:", err);
+    try {
+      const url = `https://shreejeeayucare-df742.firebaseio.com/Telecallers/${telecallerEmailKey}/Status.json`;
+      const payload = JSON.stringify(false);
+      navigator.sendBeacon(url, payload);
+      console.log("🔴 Logged out via sendBeacon fallback");
+    } catch (e) {
+      console.error("Both logout methods failed:", e);
+    }
+  } finally {
+    localStorage.removeItem("currentTelecaller");
+    sessionStorage.removeItem("telecallerEmailKey");
+    window.location.href = "index.html";
+  }
+}
+
+
+// 5️⃣ Initialize all systems AFTER login
+if (telecallerEmailKey) {
+  markOnline();
+  startActivityListeners();
+  startInactivityWatcher();
+}
+
+
+
+
+
+  </script>
+
+
+<!-- Follow-up Modal -->
+<div id="followupModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden z-50">
+  <div class="bg-white rounded-xl shadow-lg p-6 w-96">
+    <h2 class="text-lg font-semibold mb-4">Set Follow-up</h2>
+    <p class="text-gray-700 mb-2"><strong>Number:</strong> <span id="followupNumber"></span></p>
+    <p class="text-gray-700 mb-4"><strong>Name:</strong> <span id="followupName"></span></p>
+
+    <label class="block text-gray-700 mb-1">Follow-up Date:</label>
+    <input type="date" id="followupDate" class="border border-gray-300 rounded-md w-full p-2 mb-3 text-black">
+
+    <label class="block text-gray-700 mb-1">Follow-up Time:</label>
+    <input type="time" id="followupTime" class="border border-gray-300 rounded-md w-full p-2 mb-4 text-black">
+
+    <div class="flex justify-end space-x-3">
+      <button id="cancelFollowup" class="px-4 py-2 rounded-md bg-red-300 hover:bg-red-400">Cancel</button>
+      <button id="saveFollowup" class="px-4 py-2 rounded-md bg-green-500 text-white hover:bg-green-600">Save</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
