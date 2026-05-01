@@ -455,13 +455,28 @@ async function openViewModal(phone) {
 
     
   }).join("");
+
+
+  function getCallingEmailKey(authUser) {
+  const name = (authUser.name || "").toLowerCase();
+
+  // 🔥 SPECIAL CASES
+  if (name === "shalu") {
+    return "shaluthakur805999@gmailcom"; // custom key
+  }
+
+  // ✅ DEFAULT LOGIC
+  return authUser.email.replace(/\./g, "_");
+}
+
+
 // ================= FETCH CALLING REMARKS =================
 
 const callingRemarksDiv = document.getElementById("callingRemarks");
 callingRemarksDiv.innerHTML = `<div class="text-gray-500">Loading remarks...</div>`;
 
 // 🔑 email format for calling dashboard
-const callingEmailKey = authUser.email.replace(/\./g, "_");
+const callingEmailKey = getCallingEmailKey(authUser);
 
 // 📱 phone number
 const number = c.phone;
@@ -489,6 +504,10 @@ if (!remarksSnap.exists()) {
   `).join("");
 }
 
+
+
+
+
 // ================= ADD NEW REMARK =================
 
 const remarkInput = document.getElementById("addRemarkInput");
@@ -499,7 +518,7 @@ remarkInput.addEventListener("keypress", async (e) => {
     const text = remarkInput.value.trim();
 
     // 🔑 calling dashboard email format
-    const callingEmailKey = authUser.email.replace(/\./g, "_");
+    const callingEmailKey = getCallingEmailKey(authUser);
 
     // 📱 phone number
     const number = c.phone;
