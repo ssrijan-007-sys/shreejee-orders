@@ -249,7 +249,7 @@ function startRealtimeListener() {
   onValue(ref(db, "Telecallers"), (snap) => {
 
     const telecallers = snap.val() || {};
-
+    window.telecallersData = telecallers;
     let allOrders = [];
 
     Object.entries(telecallers).forEach(([emailKey, tcData]) => {
@@ -343,23 +343,92 @@ filtered.sort((a, b) => b.createdAt - a.createdAt);
   // 📊 TOTAL ORDERS
 const totalOrders = filtered.length;
 
-// 📦 DELIVERED + RTO + REVENUE
+// 📦 DELIVERED (FROM DELIVERED NODE) + RTO + REVENUE
+
 let deliveredCount = 0;
 let rtoCount = 0;
 let totalRevenue = 0;
 
-filtered.forEach(o => {
+const deliveredNow = Date.now();
 
-  const status = (o.status || "").toUpperCase();
+// 🔥 GET DELIVERED DATA FROM TELECALLERS
+const deliveredOrders = [];
 
-  if (status.includes("DELIVERED")) {
-    deliveredCount++;
-    totalRevenue += Number(o.amount || 0);
-  }
+Object.values(filtered).forEach(order => {
+
+  // RTO remains SAME
+  const status = (order.status || "").toUpperCase();
 
   if (status.includes("RTO")) {
     rtoCount++;
   }
+
+});
+
+// 🔥 LOOP ALL TELECALLERS
+Object.entries(window.telecallersData || {}).forEach(([emailKey, tcData]) => {
+
+  const deliveredRoot = tcData.Delivered || {};
+
+  Object.values(deliveredRoot).forEach(group => {
+
+    Object.values(group).forEach(deliveredOrder => {
+
+      // 👤 TELECALLER FILTER
+      if (
+        selectedTelecaller !== "ALL" &&
+        emailKey !== selectedTelecaller
+      ) {
+        return;
+      }
+
+      const deliveredAt = deliveredOrder.deliveredAt;
+
+      if (!deliveredAt) return;
+
+      let include = true;
+
+      switch (selectedDateRange) {
+
+        case "TODAY":
+          include =
+            new Date(deliveredAt).toDateString() ===
+            new Date().toDateString();
+          break;
+
+        case "LAST_7":
+          include =
+            deliveredAt >= deliveredNow - 7 * 24 * 60 * 60 * 1000;
+          break;
+
+        case "THIS_MONTH": {
+          const d = new Date(deliveredAt);
+          const n = new Date();
+
+          include =
+            d.getMonth() === n.getMonth() &&
+            d.getFullYear() === n.getFullYear();
+
+          break;
+        }
+
+        case "CUSTOM":
+          if (customFromDate && customToDate) {
+            include =
+              deliveredAt >= customFromDate &&
+              deliveredAt <= customToDate;
+          }
+          break;
+      }
+
+      if (include) {
+        deliveredCount++;
+        totalRevenue += Number(deliveredOrder.amount || 0);
+      }
+
+    });
+
+  });
 
 });
 
