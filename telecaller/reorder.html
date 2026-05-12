@@ -56,7 +56,7 @@ async function loadReorders(){
 
       html += `
       
-      <div class="bg-white shadow rounded p-5 mb-4">
+      <div id="card_${order.orderId}" class="bg-white shadow rounded p-5 mb-4">
 
         <div class="font-semibold text-blue-600 text-lg">
           ${order.name} -
@@ -71,11 +71,16 @@ async function loadReorders(){
         </div>
 
         <div class="text-gray-600 text-sm mt-1">
-          📝 Last Remark:
-          <span id="lastRemark_${order.orderId}">
-            ${order.remark || "-"}
-          </span>
-        </div>
+        📝 Last Remark:
+        <span id="lastRemark_${order.orderId}">
+          ${
+            order.remarks
+              ? Object.entries(order.remarks)
+                  .sort((a, b) => b[0] - a[0])[0][1]
+              : "-"
+          }
+        </span>
+      </div>
 
         <textarea
           id="remark_${order.orderId}"
@@ -275,6 +280,8 @@ window.reorderCustomer = async (phone, orderId) => {
 
 /* ================= NOT INTERESTED ================= */
 
+/* ================= NOT INTERESTED ================= */
+
 window.markNotInterested = async(phone,orderId)=>{
 
   if(!confirm("Mark as Not Interested?")) return;
@@ -284,7 +291,11 @@ window.markNotInterested = async(phone,orderId)=>{
     true
   );
 
-  loadReorders();
+  // ✅ Remove from UI only
+  const card = document.getElementById(`card_${orderId}`);
+  if(card){
+    card.remove();
+  }
 
 };
 
