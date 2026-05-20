@@ -389,6 +389,8 @@ async function openViewModal(phone) {
   if (!list.length) return;
 
   const c = list[0];
+  currentOrderPhone = c.phone;
+  currentOrderName = c.name;
   customerDetails.innerHTML = `
     <div><b>Name:</b> ${c.name}</div>
     <div><b>Phone:</b> ${c.phone}</div>
@@ -398,7 +400,17 @@ async function openViewModal(phone) {
     <div><b>Pincode:</b> ${c.pin}</div>
      <div class="mt-4">
 
-  <h3 class="font-bold mb-2">📞 Calling Remarks</h3>
+  <div class="flex items-center justify-between mb-2">
+
+  <h3 class="font-bold">📞 Calling Remarks</h3>
+
+  <button
+    id="openOrderDetailsBtn"
+    class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm">
+    Details
+  </button>
+
+</div>
 
 <!-- ✍️ INPUT BOX -->
 <input 
@@ -473,6 +485,84 @@ async function openViewModal(phone) {
 // ================= FETCH CALLING REMARKS =================
 
 const callingRemarksDiv = document.getElementById("callingRemarks");
+const detailsModal = document.getElementById("detailsModal");
+
+const closeDetailsModal = document.getElementById("closeDetailsModal");
+
+const detailWeight = document.getElementById("detailWeight");
+const detailHeightFeet = document.getElementById("detailHeightFeet");
+const detailHeightInch = document.getElementById("detailHeightInch");
+
+const detailBMI = document.getElementById("detailBMI");
+const detailBMIStatus = document.getElementById("detailBMIStatus");
+
+const detailAge = document.getElementById("detailAge");
+
+const detailLeadName = document.getElementById("detailLeadName");
+const detailLeadNumber = document.getElementById("detailLeadNumber");
+
+const detailHba1c = document.getElementById("detailHba1c");
+
+const detailCPeptide = document.getElementById("detailCPeptide");
+
+const detailFastingSugar = document.getElementById("detailFastingSugar");
+
+const detailNonFastingSugar = document.getElementById("detailNonFastingSugar");
+
+const detailRemark = document.getElementById("detailRemark");
+
+const detailBurningFeet = document.getElementById("detailBurningFeet");
+
+const detailBlurVision = document.getElementById("detailBlurVision");
+
+const detailRegularToilet = document.getElementById("detailRegularToilet");
+
+const detailEnglish = document.getElementById("detailEnglish");
+
+const viewDetailRemarksBtn = document.getElementById("viewDetailRemarksBtn");
+
+const saveDetailsBtn = document.getElementById("saveDetailsBtn");
+
+function calculateBMI() {
+
+  const weight = parseFloat(detailWeight.value);
+
+  const feet = parseFloat(detailHeightFeet.value) || 0;
+
+  const inches = parseFloat(detailHeightInch.value) || 0;
+
+  if (!weight || (!feet && !inches)) {
+    detailBMI.value = "";
+    detailBMIStatus.value = "";
+    return;
+  }
+
+  const totalInches = (feet * 12) + inches;
+
+  const heightMeters = totalInches * 0.0254;
+
+  const bmi = weight / (heightMeters * heightMeters);
+
+  detailBMI.value = bmi.toFixed(1);
+
+  if (bmi < 18.5) {
+    detailBMIStatus.value = "Underweight";
+  }
+  else if (bmi < 25) {
+    detailBMIStatus.value = "Normal";
+  }
+  else {
+    detailBMIStatus.value = "Overweight";
+  }
+}
+
+detailWeight.addEventListener("input", calculateBMI);
+detailHeightFeet.addEventListener("input", calculateBMI);
+detailHeightInch.addEventListener("input", calculateBMI);
+
+
+
+
 callingRemarksDiv.innerHTML = `<div class="text-gray-500">Loading remarks...</div>`;
 
 // 🔑 email format for calling dashboard
@@ -502,6 +592,85 @@ if (!remarksSnap.exists()) {
       </div>
     </div>
   `).join("");
+
+  // ================= OPEN DETAILS MODAL =================
+
+document.getElementById("openOrderDetailsBtn").onclick = async () => {
+
+  if (!currentOrderPhone) return;
+
+  detailLeadName.textContent = currentOrderName || "Customer";
+
+  detailLeadNumber.textContent = currentOrderPhone;
+
+  detailAge.value = "";
+  detailWeight.value = "";
+  detailHeightFeet.value = "";
+  detailHeightInch.value = "";
+  detailBMI.value = "";
+  detailBMIStatus.value = "";
+  detailHba1c.value = "";
+  detailCPeptide.value = "";
+  detailFastingSugar.value = "";
+  detailNonFastingSugar.value = "";
+  detailRemark.value = "";
+
+  detailBurningFeet.checked = false;
+  detailBlurVision.checked = false;
+  detailRegularToilet.checked = false;
+  detailEnglish.checked = false;
+
+  try {
+
+    const detailsSnap = await get2(
+      ref2(
+        callingDB,
+        `Telecallers/${callingEmailKey}/Ordered/${currentOrderPhone}/Details`
+      )
+    );
+
+    if (detailsSnap.exists()) {
+
+      const data = detailsSnap.val();
+
+      detailAge.value = data.age || "";
+
+      detailWeight.value = data.weight || "";
+
+      detailHeightFeet.value = data.heightFeet || "";
+
+      detailHeightInch.value = data.heightInch || "";
+
+      detailBMI.value = data.bmi || "";
+
+      detailBMIStatus.value = data.bmiStatus || "";
+
+      detailHba1c.value = data.hba1c || "";
+
+      detailCPeptide.value = data.cPeptide || "";
+
+      detailFastingSugar.value = data.fastingSugar || "";
+
+      detailNonFastingSugar.value = data.nonFastingSugar || "";
+
+      detailBurningFeet.checked = data.burningFeet || false;
+
+      detailBlurVision.checked = data.blurVision || false;
+
+      detailRegularToilet.checked = data.regularToilet || false;
+
+      detailEnglish.checked = data.english || false;
+    }
+
+    detailsModal.classList.remove("hidden");
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert("Failed to load details");
+  }
+};
 }
 
 
@@ -575,6 +744,8 @@ window.closeViewModal = closeViewModal;
 let searchQuery = "";
 let selectedStatus = "ALL";
 let selectedDateRange = "LIFETIME";
+let currentOrderPhone = null;
+let currentOrderName = null;
 let customFromDate = null;
 let customToDate = null;
 
@@ -1415,6 +1586,82 @@ async function reorder(phone, orderId) {
 window.reorder = reorder;
 
 
+closeDetailsModal.addEventListener("click", () => {
+  detailsModal.classList.add("hidden");
+});
+
+
+saveDetailsBtn.addEventListener("click", async () => {
+
+  if (!currentOrderPhone) return;
+
+  try {
+
+    const detailsRef = ref2(
+      callingDB,
+      `Telecallers/${callingEmailKey}/Ordered/${currentOrderPhone}/Details`
+    );
+
+    const saveData = {
+
+      age: detailAge.value || "",
+
+      weight: detailWeight.value || "",
+
+      heightFeet: detailHeightFeet.value || "",
+
+      heightInch: detailHeightInch.value || "",
+
+      bmi: detailBMI.value || "",
+
+      bmiStatus: detailBMIStatus.value || "",
+
+      hba1c: detailHba1c.value || "",
+
+      cPeptide: detailCPeptide.value || "",
+
+      fastingSugar: detailFastingSugar.value || "",
+
+      nonFastingSugar: detailNonFastingSugar.value || "",
+
+      burningFeet: detailBurningFeet.checked,
+
+      blurVision: detailBlurVision.checked,
+
+      regularToilet: detailRegularToilet.checked,
+
+      english: detailEnglish.checked,
+
+      updatedAt: new Date().toISOString()
+    };
+
+    await set(detailsRef, saveData);
+
+    if (detailRemark.value.trim()) {
+
+      const remarkRef = push(
+        ref2(
+          callingDB,
+          `Telecallers/${callingEmailKey}/Ordered/${currentOrderPhone}/Remarks`
+        )
+      );
+
+      await set(remarkRef, {
+        text: detailRemark.value.trim(),
+        time: new Date().toISOString()
+      });
+    }
+
+    alert("✅ Details saved successfully");
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert("❌ Failed to save details");
+  }
+});
+
 </script>
 </head>
 
@@ -1614,6 +1861,220 @@ window.reorder = reorder;
     </div>
 
   </div>
+</div>
+
+
+<!-- Modern Details Modal -->
+<div id="detailsModal"
+class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9000] p-3">
+
+  <div class="bg-white text-black rounded-2xl w-full max-w-4xl relative overflow-hidden shadow-2xl z-[9001]">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5">
+
+      <button id="closeDetailsModal"
+      class="absolute top-4 right-5 text-3xl opacity-80 hover:opacity-100">
+      &times;
+      </button>
+
+      <h2 class="text-3xl font-bold">Patient Details</h2>
+
+      <div class="mt-3 flex flex-wrap gap-6">
+
+        <div>
+          <p class="text-sm opacity-80">Lead Name</p>
+          <p id="detailLeadName" class="text-xl font-semibold">—</p>
+        </div>
+
+        <div>
+          <p class="text-sm opacity-80">Phone Number</p>
+          <p id="detailLeadNumber" class="text-xl font-semibold">—</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="p-5 max-h-[80vh] overflow-y-auto">
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">Age</label>
+          <input type="text" id="detailAge"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="Age">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">Weight</label>
+          <input type="text" id="detailWeight"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="Weight">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">Height</label>
+
+          <div class="flex gap-2">
+
+            <input type="text"
+            id="detailHeightFeet"
+            class="w-1/2 border rounded-xl px-4 py-3"
+            placeholder="Feet">
+
+            <input type="text"
+            id="detailHeightInch"
+            class="w-1/2 border rounded-xl px-4 py-3"
+            placeholder="Inch">
+
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">BMI</label>
+          <input type="text"
+          id="detailBMI"
+          readonly
+          class="w-full border rounded-xl px-4 py-3 bg-gray-100">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">BMI Status</label>
+          <input type="text"
+          id="detailBMIStatus"
+          readonly
+          class="w-full border rounded-xl px-4 py-3 bg-gray-100">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">HBA1C</label>
+          <input type="text"
+          id="detailHba1c"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="HBA1C">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">C-PEPTIDE</label>
+          <input type="text"
+          id="detailCPeptide"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="C-PEPTIDE">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">Fasting Sugar</label>
+          <input type="text"
+          id="detailFastingSugar"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="Fasting Sugar">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">Non-Fasting Sugar</label>
+          <input type="text"
+          id="detailNonFastingSugar"
+          class="w-full border rounded-xl px-4 py-3"
+          placeholder="Non-Fasting Sugar">
+        </div>
+
+
+        <!-- SYMPTOMS -->
+        <div class="md:col-span-2">
+
+          <label class="block text-sm font-semibold mb-3">
+            Symptoms / Preferences
+          </label>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+            <label class="flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer hover:bg-gray-50">
+
+              <input
+              type="checkbox"
+              id="detailBurningFeet"
+              class="w-5 h-5">
+
+              <span>Haath pairo m jalan</span>
+
+            </label>
+
+            <label class="flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer hover:bg-gray-50">
+
+              <input
+              type="checkbox"
+              id="detailBlurVision"
+              class="w-5 h-5">
+
+              <span>Ankho se dhundhla dikhna</span>
+
+            </label>
+
+            <label class="flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer hover:bg-gray-50">
+
+              <input
+              type="checkbox"
+              id="detailRegularToilet"
+              class="w-5 h-5">
+
+              <span>Regular toilet</span>
+
+            </label>
+
+            <label class="flex items-center gap-3 border rounded-xl px-4 py-3 cursor-pointer hover:bg-gray-50">
+
+              <input
+              type="checkbox"
+              id="detailEnglish"
+              class="w-5 h-5">
+
+              <span>English</span>
+
+            </label>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Remarks -->
+      <div class="mt-5">
+
+        <div class="flex items-center justify-between mb-2">
+
+          <label class="block text-sm font-semibold">
+            Add Remark
+          </label>
+
+          <button
+          id="viewDetailRemarksBtn"
+          type="button"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          View Remarks
+          </button>
+
+        </div>
+
+        <textarea
+        id="detailRemark"
+        rows="3"
+        class="w-full border rounded-xl px-4 py-3"
+        placeholder="Write patient notes or remarks..."></textarea>
+
+      </div>
+
+      <button id="saveDetailsBtn"
+      class="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-700 hover:opacity-90 text-white py-4 rounded-xl font-bold text-lg">
+      Save Details
+      </button>
+
+    </div>
+
+  </div>
+
 </div>
 
 
