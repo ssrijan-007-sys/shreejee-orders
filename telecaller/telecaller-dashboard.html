@@ -111,6 +111,7 @@ await set(ref(db, `Telecallers/${emailKey}/Name`), authUser.name);
 /* ================= STATE ================= */
 let isServiceable = false;
 let editingOrder = null;
+let isGeneratingAwb = false;
 
 /* ================= PINCODE ================= */
 async function checkServiceability(pinCode) {
@@ -178,203 +179,280 @@ async function getWaybill() {
 
 /* ================= SAVE ORDER ================= */
 async function saveOrder(assignAwb) {
-  const v = id => document.getElementById(id).value.trim();
 
-  if (![v("name"),v("phone"),v("pin"),v("address"),v("orderAmount")].every(Boolean)) {
-    showCustomAlert("❌ All fields required");
-    return;
-  }
+  try {
 
-  if (!/^\d{10}$/.test(v("phone"))) return showCustomAlert("❌ Phone must be 10 digits");
-  if (!/^\d{6}$/.test(v("pin"))) return showCustomAlert("❌ Pincode must be 6 digits");
+    const v = id => document.getElementById(id).value.trim();
 
-  let awb = null;
-  let status = "PENDING";
-  const scheduleDate = document.getElementById("scheduleDate").value;
-  const scheduleTimestamp = scheduleDate ? new Date(scheduleDate).setHours(0,0,0,0) : null;
-  const today = new Date().setHours(0,0,0,0);
-
-
-
-  if (scheduleTimestamp && scheduleTimestamp > today) {
-
-  const scheduledOrder = {
-    name: v("name"),
-    phone: v("phone"),
-    pin: v("pin"),
-    city: v("city"),
-    state: v("state"),
-    address: v("address"),
-    amount: v("orderAmount"),
-    quantity: v("quantity") || 1,
-    paymentMode: paymentMode.value,
-    scheduleDate: scheduleTimestamp,
-    createdAt: Date.now()
-  };
-
-  const orderId = "SJ" + Date.now();
-
-  await set(
-    ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`),
-    scheduledOrder
-  );
-
-  showCustomAlert("📅 Order scheduled successfully");
-  clearOrderModal();
-  closeModal();
-  return;
-}
-
-  if (assignAwb) {
-    if (!isServiceable) return showCustomAlert("❌ Not serviceable");
-    awb = await getWaybill();
-    status = "AWB GENERATED";
-  }
-
-
-  // 🔥 UPDATE EXISTING ORDER
-if (editingOrder) {
-  const { phone: oldPhone, orderId } = editingOrder;
-
-  const newPhone = v("phone");
-
-  const snap = await get(
-    ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
-  );
-  const oldOrder = snap.val();
-
-  if (!oldOrder) return showCustomAlert("Order not found");
-
-  const updatedOrder = {
-    ...oldOrder,
-    phone: newPhone,
-    name: v("name"),
-    pin: v("pin"),
-    city: v("city"),
-    state: v("state"),
-    address: v("address"),
-    amount: v("orderAmount"),
-    quantity: v("quantity") || 1,
-    paymentMode: paymentMode.value,
-    status: "PENDING",
-    isBlackBox: document.getElementById("isBlackBox").checked
-  };
-
-  // 🔥 If phone changed → MOVE data
-  if (oldPhone !== newPhone) {
-    // 1️⃣ delete old
-    await remove(
-      ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
-    );
-
-    // 2️⃣ save new
-    await set(
-      ref(db, `Telecallers/${emailKey}/Orders/${newPhone}/${orderId}`),
-      updatedOrder
-    );
-  } else {
-    // normal update
-    await set(
-      ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`),
-      updatedOrder
-    );
-  }
-
-  editingOrder = null;
-
-  showCustomAlert("✅ Order Updated");
-  clearOrderModal();
-  closeModal();
-  renderOrders();
-  return;
-}
-  const orderId = "SJ" + Date.now();
-  const phoneKey = v("phone");
-
-  const order = {
-    orderId,
-    awb,
-    name: v("name"),
-    phone: phoneKey,
-    pin: v("pin"),
-    city: v("city"),
-    state: v("state"),
-    address: v("address"),
-    amount: v("orderAmount"),
-    quantity: v("quantity") || 1,
-    paymentMode: paymentMode.value,
-    status,
-    createdAt: Date.now(),
-    trackable: !!awb,
-  lastTrackedAt: 0,
-  isBlackBox: document.getElementById("isBlackBox").checked
-  };
-
-  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`), order);
-  if (awb) {
-  await set(ref(db, `TrackingQueues/normal/${awb}`), true);
-}
-
-
-  clearOrderModal();
-  closeModal();
-
-
-  if (assignAwb) {
-  const delhiveryPayload = {
-  shipments: [{
-    name: order.name,
-    phone: order.phone,
-    add: order.address,      // ✅ FIXED
-    pin: order.pin,        // ✅ STRONGLY RECOMMENDED
-    order: order.orderId,
-    payment_mode: order.paymentMode,
-    cod_amount:
-      order.paymentMode === "COD" ? Number(order.amount) : 0,
-    waybill: awb,
-    quantity: order.quantity || 1,
-    shipment_width: "10",    // ✅ OPTIONAL BUT SAFE
-    shipment_height: "10",
-    shipment_length: 10 * (order.quantity || 1),
-    weight: 300 * (order.quantity || 1),
-    products_desc: "Sugar Medicine",
-    shipping_mode: "Surface",
-    return_phone: 8449957169
-  }],
-  pickup_location: {
-    name: "Jatin Home"
-  }
-};
-
-
-  const res = await fetch(
-    "https://proxy-new.ssrijan-007-sys.deno.net/create-order",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(delhiveryPayload)
+    if (![v("name"), v("phone"), v("pin"), v("address"), v("orderAmount")].every(Boolean)) {
+      showCustomAlert("❌ All fields required");
+      return;
     }
-  );
 
-  const result = await res.json();
-  console.log("Manifestation response:", result);
+    if (!/^\d{10}$/.test(v("phone")))
+      return showCustomAlert("❌ Phone must be 10 digits");
 
-  if (result?.success === false) {
-  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/status`), "PENDING" );
-  await set(ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/trackable`), false);
-  showCustomAlert("❌ Order saved but Manifestation failed. Status set to PENDING. Try after 24 hours.");
-  closeModal();
-  renderOrders();
-  return;
-}
+    if (!/^\d{6}$/.test(v("pin")))
+      return showCustomAlert("❌ Pincode must be 6 digits");
 
+    let awb = null;
+    let status = "PENDING";
 
-}
+    const scheduleDate = document.getElementById("scheduleDate").value;
+    const scheduleTimestamp = scheduleDate
+      ? new Date(scheduleDate).setHours(0, 0, 0, 0)
+      : null;
 
-showCustomAlert("✅ Order Manifested successfully");
-clearOrderModal();
-closeModal();
-renderOrders();
+    const today = new Date().setHours(0, 0, 0, 0);
+
+    if (assignAwb && isGeneratingAwb) return;
+
+    if (assignAwb) {
+      isGeneratingAwb = true;
+
+      awbBtn.disabled = true;
+      awbBtn.innerText = "Generating...";
+    }
+
+    /* ================= SCHEDULED ORDER ================= */
+
+    if (scheduleTimestamp && scheduleTimestamp > today) {
+
+      const scheduledOrder = {
+        name: v("name"),
+        phone: v("phone"),
+        pin: v("pin"),
+        city: v("city"),
+        state: v("state"),
+        address: v("address"),
+        amount: v("orderAmount"),
+        quantity: v("quantity") || 1,
+        paymentMode: paymentMode.value,
+        scheduleDate: scheduleTimestamp,
+        createdAt: Date.now()
+      };
+
+      const orderId = "SJ" + Date.now();
+
+      await set(
+        ref(db, `Telecallers/${emailKey}/ScheduledOrders/${orderId}`),
+        scheduledOrder
+      );
+
+      showCustomAlert("📅 Order scheduled successfully");
+
+      clearOrderModal();
+      closeModal();
+
+      return;
+    }
+
+    /* ================= AWB ================= */
+
+    if (assignAwb) {
+
+      if (!isServiceable) {
+        showCustomAlert("❌ Not serviceable");
+        return;
+      }
+
+      awb = await getWaybill();
+      status = "AWB GENERATED";
+    }
+
+    /* ================= EDIT ORDER ================= */
+
+    if (editingOrder) {
+
+      const { phone: oldPhone, orderId } = editingOrder;
+      const newPhone = v("phone");
+
+      const snap = await get(
+        ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
+      );
+
+      const oldOrder = snap.val();
+
+      if (!oldOrder) {
+        showCustomAlert("Order not found");
+        return;
+      }
+
+      const updatedOrder = {
+        ...oldOrder,
+        phone: newPhone,
+        name: v("name"),
+        pin: v("pin"),
+        city: v("city"),
+        state: v("state"),
+        address: v("address"),
+        amount: v("orderAmount"),
+        quantity: v("quantity") || 1,
+        paymentMode: paymentMode.value,
+        status: "PENDING",
+        isBlackBox: document.getElementById("isBlackBox").checked
+      };
+
+      if (oldPhone !== newPhone) {
+
+        await remove(
+          ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`)
+        );
+
+        await set(
+          ref(db, `Telecallers/${emailKey}/Orders/${newPhone}/${orderId}`),
+          updatedOrder
+        );
+
+      } else {
+
+        await set(
+          ref(db, `Telecallers/${emailKey}/Orders/${oldPhone}/${orderId}`),
+          updatedOrder
+        );
+      }
+
+      editingOrder = null;
+
+      showCustomAlert("✅ Order Updated");
+
+      clearOrderModal();
+      closeModal();
+      renderOrders();
+
+      return;
+    }
+
+    /* ================= CREATE ORDER ================= */
+
+    const orderId = "SJ" + Date.now();
+    const phoneKey = v("phone");
+
+    const order = {
+      orderId,
+      awb,
+      name: v("name"),
+      phone: phoneKey,
+      pin: v("pin"),
+      city: v("city"),
+      state: v("state"),
+      address: v("address"),
+      amount: v("orderAmount"),
+      quantity: v("quantity") || 1,
+      paymentMode: paymentMode.value,
+      status,
+      createdAt: Date.now(),
+      trackable: !!awb,
+      lastTrackedAt: 0,
+      isBlackBox: document.getElementById("isBlackBox").checked
+    };
+
+    await set(
+      ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`),
+      order
+    );
+
+    if (awb) {
+      await set(ref(db, `TrackingQueues/normal/${awb}`), true);
+    }
+
+    clearOrderModal();
+    closeModal();
+
+    /* ================= MANIFEST ================= */
+
+    if (assignAwb) {
+
+      const delhiveryPayload = {
+        shipments: [{
+          name: order.name,
+          phone: order.phone,
+          add: order.address,
+          pin: order.pin,
+          order: order.orderId,
+          payment_mode: order.paymentMode,
+          cod_amount:
+            order.paymentMode === "COD"
+              ? Number(order.amount)
+              : 0,
+          waybill: awb,
+          quantity: order.quantity || 1,
+          shipment_width: "10",
+          shipment_height: "10",
+          shipment_length: 10 * (order.quantity || 1),
+          weight: 300 * (order.quantity || 1),
+          products_desc: "Sugar Medicine",
+          shipping_mode: "Surface",
+          return_phone: 8449957169
+        }],
+        pickup_location: {
+          name: "Jatin Home"
+        }
+      };
+
+      const res = await fetch(
+        "https://proxy-new.ssrijan-007-sys.deno.net/create-order",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delhiveryPayload)
+        }
+      );
+
+      const result = await res.json();
+
+      console.log("Manifestation response:", result);
+
+      if (result?.success === false) {
+
+        await set(
+          ref(db,
+            `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/status`
+          ),
+          "PENDING"
+        );
+
+        await set(
+          ref(db,
+            `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}/trackable`
+          ),
+          false
+        );
+
+        showCustomAlert(
+          "❌ Order saved but Manifestation failed. Status set to PENDING. Try after 24 hours."
+        );
+
+        renderOrders();
+        return;
+      }
+    }
+
+    showCustomAlert("✅ Order Manifested successfully");
+
+    clearOrderModal();
+    closeModal();
+    renderOrders();
+
+  } catch (err) {
+
+    console.error("Save Order Error:", err);
+
+    showCustomAlert(
+      err?.message || "❌ Something went wrong. Please try again."
+    );
+
+  } finally {
+
+    isGeneratingAwb = false;
+
+    const btn = document.getElementById("awbBtn");
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "Save & Generate AWB";
+    }
+  }
 }
 
 /* ================= VIEW MODAL ================= */
