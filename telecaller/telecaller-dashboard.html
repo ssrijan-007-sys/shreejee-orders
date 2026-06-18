@@ -29,9 +29,8 @@
 }
 </style>
 
-<script type="module" src="js/ofd-alert-engine.js"></script>
-
 <script src="https://cdn.tailwindcss.com"></script>
+<script type="module" src="js/ofd-alert-engine.js"></script>
 
 <script type="module">
 
@@ -1262,7 +1261,13 @@ function startTrackingEngine() {
   setInterval(runTrackingWorker, 60000); // heartbeat only
   runTrackingWorker(); // initial run
 }
-startTrackingEngine();
+const MASTER_TRACKER_KEY = "jatin_shreejee_com";
+
+if (emailKey === MASTER_TRACKER_KEY) {
+  console.log("MASTER TRACKER ACTIVE");
+  startTrackingEngine();
+}
+
 setInterval(runScheduledOrdersWorker, 60000);
 runScheduledOrdersWorker();
 
@@ -1393,19 +1398,7 @@ if(status === "DELIVERED"){
     deliveredData
   );
 
-}
-
-
-        if (status === "OUT FOR DELIVERY") {
-          const addedTime = Date.now();
-
-      await set(
-        ref(db, `Telecallers/${tcKey}/OFD/${awb}`),
-        { addedTime }
-      );
-        }
-
-        
+}      
       }
     }
   }
@@ -1806,11 +1799,6 @@ saveDetailsBtn.addEventListener("click", async () => {
   <input type="date" id="toDate"
     class="px-2 py-2 rounded bg-black/40 border border-gray-600 text-white hidden">
 
-    <button
-    onclick="location.href='Out-for-delivery.html'"
-    class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded shadow-lg">
-    🚚 Out For Delivery
-  </button>
   <button
   onclick="location.href='scheduled-orders.html'"
   class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded shadow-lg">
