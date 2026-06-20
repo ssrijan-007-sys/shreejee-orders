@@ -826,11 +826,21 @@ let currentOrderName = null;
 let customFromDate = null;
 let customToDate = null;
 
+let ordersData = {};
+
+console.log("Firebase Listener Created");
+
+onValue(
+  ref(db, `Telecallers/${emailKey}/Orders`),
+  (snap) => {
+    ordersData = snap.val() || {};
+    renderOrders();
+  }
+);
 
 /* ================= RENDER ================= */
 async function renderOrders() {
-  onValue(ref(db, `Telecallers/${emailKey}/Orders`), (snap) => {
-    const data = snap.val() || {};
+    const data = ordersData;
 
   // 🔥 1️⃣ Keep only latest order per phone
   const latestOrdersMap = {};
@@ -996,7 +1006,6 @@ document.getElementById("ordersTotal").innerText = `Total: ${allOrders.length}`;
   });
 
   ordersContainer.innerHTML = html;
-});
 }
 
 function getStatusColor(status) {
