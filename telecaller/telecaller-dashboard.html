@@ -1338,13 +1338,16 @@ async function trackBatch(awbs) {
   console.log("RAW PKG FROM DELHIVERY:", data);
 
 
+  const snap = await get(ref(db, "Telecallers"));
+  const telecallers = snap.val() || {};
+
   for (const pkg of shipments) {
-    await handleTrackingUpdate(pkg);
+    await handleTrackingUpdate(pkg, telecallers);
   }
 }
 
 
-async function handleTrackingUpdate(pkg) {
+async function handleTrackingUpdate(pkg, telecallers) {
   const shipment = pkg?.Shipment;
   if (!shipment) return;
 
@@ -1363,9 +1366,6 @@ async function handleTrackingUpdate(pkg) {
     scans,
     updatedAt: now
   });
-
-  const snap = await get(ref(db, "Telecallers"));
-  const telecallers = snap.val() || {};
 
   for (const tcKey of Object.keys(telecallers)) {
     const orders = telecallers[tcKey].Orders || {};
