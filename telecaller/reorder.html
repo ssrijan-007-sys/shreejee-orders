@@ -265,6 +265,8 @@ window.reorderCustomer = async (phone, orderId) => {
   const order = snap.val();
   if (!order) return;
 
+  window.currentReorderOrderId = orderId;
+
   document.getElementById("name").value = order.name || "";
   document.getElementById("phone").value = order.phone || "";
   document.getElementById("pin").value = order.pin || "";
@@ -417,7 +419,21 @@ async function saveOrder(assignAwb){
   }
 
   alert("✅ Order placed");
-  closeOrderModal();
+
+if(window.currentReorderOrderId){
+
+  const card = document.getElementById(
+    `card_${window.currentReorderOrderId}`
+  );
+
+  if(card){
+    card.remove();
+  }
+
+  window.currentReorderOrderId = null;
+}
+
+closeOrderModal();
 }
 
 function closeViewModal(){
