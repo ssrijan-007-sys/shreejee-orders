@@ -25,6 +25,27 @@ if (!authUser || authUser.role !== "telecaller") {
 
 const emailKey = authUser.email.replace(/[.@]/g, "_");
 
+function getLatestReorder(order, allOrders){
+
+    // Customer already reordered but the new order
+    // hasn't been delivered yet.
+    if(order.isReordered){
+
+        const next = allOrders.find(o => o.reorderOf === order.awb);
+
+        if(!next){
+            return null;
+        }
+
+        if(!next.deliveredAt){
+            return null;
+        }
+
+        return getLatestReorder(next, allOrders);
+    }
+
+    return order;
+}
 /* ================= LOAD REORDER DATA ================= */
 
 async function loadReorders(){
@@ -42,19 +63,38 @@ async function loadReorders(){
 
   let html = "";
 
+  const cards = [];
+
   Object.values(data).forEach(phoneGroup => {
 
-    Object.values(phoneGroup).forEach(order => {
+    const orders = Object.values(phoneGroup);
 
-      if(!order.deliveredAt) return;
+    orders.forEach(order => {
+      if(order.reorderOf) return;
 
-      const diff = now - order.deliveredAt;
+      if(order.notInterested) return;
+
+      
+
+    const activeOrder = getLatestReorder(order, orders);
+
+    if(!activeOrder) return;
+
+    const diff = now - activeOrder.deliveredAt;
+
 
       if(diff < days35) return;
 
-      const daysAgo = Math.floor(diff / (1000*60*60*24));
+      
 
-      html += `
+      const daysAgo = Math.floor(
+    (now-activeOrder.deliveredAt)/(1000*60*60*24)
+      );
+
+      
+      cards.push({
+    deliveredAt: activeOrder.deliveredAt,
+    html: `
       
       <div id="card_${order.orderId}" class="bg-white shadow rounded p-5 mb-4">
 
@@ -117,17 +157,18 @@ async function loadReorders(){
 
       </div>
       
-      `;
+      `});
 
     });
 
   });
 
-  if(!html){
-    html = `<p class="text-gray-600">No reorder customers found.</p>`;
-  }
+  cards.sort((a, b) => b.deliveredAt - a.deliveredAt);
 
-  container.innerHTML = html;
+  container.innerHTML =
+    cards.length
+        ? cards.map(c => c.html).join("")
+        : `<p class="text-gray-600">No reorder customers found.</p>`;
 
 }
 
@@ -217,6 +258,9 @@ document.getElementById("latestRemark").innerText =
   const deliveredDate = o.deliveredAt
     ? new Date(o.deliveredAt).toLocaleString()
     : "-";
+    const reorderDate = o.reorderedAt
+    ? new Date(o.reorderedAt).toLocaleString()
+    : "-";
 
   // ✅ GET REMARKS
   let remarksHTML = "No remarks";
@@ -241,6 +285,7 @@ document.getElementById("latestRemark").innerText =
       <div><b>Status:</b> closed Delivered</div>
       <div><b>Order Date:</b> ${orderDate}</div>
       <div><b>Delivered At:</b> ${deliveredDate}</div>
+      <div><b>Reordered At:</b> ${reorderDate}</div>
       <div><b>Amount:</b> ₹${o.amount}</div>
 
     
@@ -264,6 +309,10 @@ window.reorderCustomer = async (phone, orderId) => {
 
   const order = snap.val();
   if (!order) return;
+
+  window.currentReorderOrderId = orderId;
+  window.currentReorderAwb = order.awb;
+  window.currentReorderPhone = phone;
 
   document.getElementById("name").value = order.name || "";
   document.getElementById("phone").value = order.phone || "";
@@ -353,6 +402,10 @@ async function saveOrder(assignAwb){
   const order = {
     orderId,
     awb,
+    reorderOf:
+    assignAwb
+        ? window.currentReorderAwb || null
+        : null,
     name: v("name"),
     phone: phoneKey,
     pin: v("pin"),
@@ -373,6 +426,7 @@ async function saveOrder(assignAwb){
     order
   );
 
+  
   if(assignAwb){
 
     const payload = {
@@ -414,10 +468,58 @@ async function saveOrder(assignAwb){
     if(result?.success === false){
       alert("Manifest failed");
     }
+    
+    if(window.currentReorderOrderId){
+
+    console.log("Reorder Info:", {
+    phone: window.currentReorderPhone,
+    orderId: window.currentReorderOrderId,
+    awb: window.currentReorderAwb
+});
+
+    const reorderPath =
+`Telecallers/${emailKey}/Delivered/${window.currentReorderPhone}/${window.currentReorderOrderId}`;
+
+console.log("Saving to:", reorderPath);
+
+await set(ref(db, `${reorderPath}/isReordered`), true);
+await set(ref(db, `${reorderPath}/reorderedAt`), Date.now());
+
+const verify = await get(ref(db, reorderPath));
+
+console.log("After save:", verify.val());
+
+    await set(
+        ref(
+            db,
+            `Telecallers/${emailKey}/Delivered/${window.currentReorderPhone}/${window.currentReorderOrderId}/reorderedAt`
+        ),
+        Date.now()
+    );
+
+}
+
+
   }
 
   alert("✅ Order placed");
-  closeOrderModal();
+
+if(window.currentReorderOrderId){
+
+  const card = document.getElementById(
+    `card_${window.currentReorderOrderId}`
+  );
+
+  if(card){
+    card.remove();
+  }
+
+  window.currentReorderOrderId = null;
+  window.currentReorderAwb = null;
+  window.currentReorderPhone = null;
+}
+
+closeOrderModal();
 }
 
 function closeViewModal(){
