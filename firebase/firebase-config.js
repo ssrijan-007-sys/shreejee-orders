@@ -15,13 +15,13 @@ import {
 
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA0VETwJGM2xliTPcxg86dVS3vut0wdDl0",
-  authDomain: "shreejeeayucare-delhiveryone.firebaseapp.com",
-  databaseURL: "https://shreejeeayucare-delhiveryone-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "shreejeeayucare-delhiveryone",
-  storageBucket: "shreejeeayucare-delhiveryone.firebasestorage.app",
-  messagingSenderId: "453512807297",
-  appId: "1:453512807297:web:dd90f085e95b22a4b79e80"
+  apiKey: "AIzaSyD2ennjchwkQfwPSAJIhiKEpPHbdExhFZo",
+  authDomain: "shreejeeayucare-delhiver-19f97.firebaseapp.com",
+  databaseURL: "https://shreejeeayucare-delhiver-19f97-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "shreejeeayucare-delhiver-19f97",
+  storageBucket: "shreejeeayucare-delhiver-19f97.firebasestorage.app",
+  messagingSenderId: "44696209053",
+  appId: "1:44696209053:web:58e182a5f691bced1e7674"
 };
 
 

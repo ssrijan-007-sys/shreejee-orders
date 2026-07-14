@@ -7,73 +7,95 @@ const emailKey = authUser.email.replace(/[.@]/g, "_");
 
 const lastStatus = {};
 const alertShownForUpdate = {};
+const trackingListeners = {};
 
 let warningAudio = null;
 
 /* ================= GLOBAL OFD WATCHER ================= */
 
-console.log("OFD Alert Engine Loaded");
+console.log("Order Alert Engine Loaded");
 
-onValue(ref(db, `Telecallers/${emailKey}/OFD`), snap => {
+onValue(ref(db, `Telecallers/${emailKey}/Orders`), snap => {
 
-  const ofd = snap.val() || {};
-  console.log("OFD List:", ofd);
+    const orders = snap.val() || {};
 
-  Object.keys(ofd).forEach(awb => {
+    Object.values(orders).forEach(phoneOrders => {
 
-    console.log("Watching AWB:", awb);
+        Object.values(phoneOrders).forEach(order => {
 
-    onValue(ref(db, `Tracking/${awb}`), async trackSnap => {
+            if (
+                order.status === "OUT FOR DELIVERY" &&
+                order.awb &&
+                !trackingListeners[order.awb]
+            ) {
 
-      const tracking = trackSnap.val();
-      if (!tracking) {
-        console.log("No tracking data yet for", awb);
-        return;
-      }
+                console.log("Start watching:", order.awb);
 
-      const status = tracking.status;
-      const prev = lastStatus[awb];
+                startTracking(order.awb);
 
-      console.log("Tracking update:", {
-        awb,
-        prevStatus: prev,
-        currentStatus: status,
-        updatedAt: tracking.updatedAt
-      });
+            }
 
-      const instruction =
-        tracking?.scans?.slice(-1)[0]?.ScanDetail?.Instructions?.toLowerCase() || "";
-
-      console.log("Instruction:", instruction);
-
-      /* ===== DETECT FAILED DELIVERY ===== */
-
-      if (
-        prev === "OUT FOR DELIVERY" &&
-        status === "PICKED"
-      ) {
-
-        console.log("🚨 OFD FAILURE DETECTED", awb);
-
-        const updateKey = tracking.updatedAt;
-
-        if (alertShownForUpdate[awb] === updateKey) {
-          console.log("Already shown alert for this update");
-          return;
-        }
-
-        alertShownForUpdate[awb] = updateKey;
-
-        showFailureModal(awb, tracking);
-      }
-
-      lastStatus[awb] = status;
+        });
 
     });
 
-  });
-
 });
+
+
+
+function startTracking(awb) {
+
+    trackingListeners[awb] = true;
+
+    onValue(ref(db, `Tracking/${awb}`), async trackSnap => {
+
+        const tracking = trackSnap.val();
+
+        if (!tracking) return;
+
+        const status = tracking.status;
+        const prev = lastStatus[awb];
+
+        console.log({
+            awb,
+            prev,
+            status
+        });
+
+        if (
+            status === "PICKED" &&
+            alertShownForUpdate[awb] !== tracking.updatedAt
+        ) {
+
+            const updateKey = tracking.updatedAt;
+
+            if (alertShownForUpdate[awb] !== updateKey) {
+
+                alertShownForUpdate[awb] = updateKey;
+
+                console.log("🚨 OFD FAILURE", awb);
+
+                showFailureModal(awb, tracking);
+
+            }
+
+        }
+
+        lastStatus[awb] = status;
+
+        if (
+            status === "DELIVERED" ||
+            status === "RTO" ||
+            status === "CANCELLED"
+        ) {
+
+            delete trackingListeners[awb];
+
+        }
+
+    });
+
+}
 
 /* ================= MODAL ================= */
 

@@ -1285,6 +1285,7 @@ async function runTrackingWorker() {
 
   const snap = await get(ref(db, "Telecallers"));
   const telecallers = snap.val() || {};
+  const awbMap = {};
 
   const awbsToTrack = [];
 
@@ -1294,6 +1295,14 @@ async function runTrackingWorker() {
     for (const phone of Object.keys(ordersByPhone)) {
       for (const orderId of Object.keys(ordersByPhone[phone])) {
         const order = ordersByPhone[phone][orderId];
+        if (order.awb) {
+    awbMap[order.awb] = {
+        tcKey,
+        phone,
+        orderId,
+        order
+            };
+        }
 
         if (!order.trackable || !order.awb) continue;
 
@@ -1321,12 +1330,12 @@ async function runTrackingWorker() {
 
   for (let i = 0; i < awbsToTrack.length; i += 50) {
     const batch = awbsToTrack.slice(i, i + 50);
-    await trackBatch(batch);
+    await trackBatch(batch, telecallers, awbMap);
   }
 }
 
 
-async function trackBatch(awbs) {
+async function trackBatch(awbs, telecallers, awbMap) {
   console.log("Tracking batch AWBs:", awbs);
 
   const res = await fetch(
@@ -1339,12 +1348,12 @@ async function trackBatch(awbs) {
 
 
   for (const pkg of shipments) {
-    await handleTrackingUpdate(pkg);
+    await handleTrackingUpdate(pkg, telecallers, awbMap);
   }
 }
 
 
-async function handleTrackingUpdate(pkg) {
+async function handleTrackingUpdate(pkg, telecallers, awbMap) {
   const shipment = pkg?.Shipment;
   if (!shipment) return;
 
@@ -1364,53 +1373,40 @@ async function handleTrackingUpdate(pkg) {
     updatedAt: now
   });
 
-  const snap = await get(ref(db, "Telecallers"));
-  const telecallers = snap.val() || {};
 
-  for (const tcKey of Object.keys(telecallers)) {
-    const orders = telecallers[tcKey].Orders || {};
+  const found = awbMap[awb];
 
-    for (const phone of Object.keys(orders)) {
-      for (const orderId of Object.keys(orders[phone])) {
-        const order = orders[phone][orderId];
-        if (order.awb !== awb) continue;
+if (!found) return;
 
-        let trackable = true;
+const { tcKey, phone, orderId, order } = found;
 
-        if (["DELIVERED", "RTO", "CANCELLED"].includes(status)) {
-          trackable = false;
-        }
+let trackable = true;
 
-        const updatedOrder = {
-  ...order,
-  status: status,
-  trackable: trackable,
-  lastTrackedAt: now
+if (["DELIVERED", "RTO", "CANCELLED"].includes(status)) {
+    trackable = false;
+}
+
+const updatedOrder = {
+    ...order,
+    status,
+    trackable,
+    lastTrackedAt: now
 };
 
 await set(
-  ref(db, `Telecallers/${tcKey}/Orders/${phone}/${orderId}`),
-  updatedOrder
+    ref(db, `Telecallers/${tcKey}/Orders/${phone}/${orderId}`),
+    updatedOrder
 );
 
-/* ===== MOVE TO DELIVERED NODE ===== */
-
-if(status === "DELIVERED"){
-
-  const deliveredData = {
-    ...updatedOrder,
-    deliveredAt: now
-  };
-
-  await set(
-    ref(db, `Telecallers/${tcKey}/Delivered/${phone}/${orderId}`),
-    deliveredData
-  );
-
-}      
-      }
-    }
-  }
+if (status === "DELIVERED") {
+    await set(
+        ref(db, `Telecallers/${tcKey}/Delivered/${phone}/${orderId}`),
+        {
+            ...updatedOrder,
+            deliveredAt: now
+        }
+    );
+}
 }
 
 

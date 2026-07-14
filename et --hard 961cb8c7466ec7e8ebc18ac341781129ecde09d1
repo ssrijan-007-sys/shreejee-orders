@@ -1,0 +1,42 @@
+[33mcommit 961cb8c7466ec7e8ebc18ac341781129ecde09d1[m
+Author: ssrijan-007-sys <137605821+ssrijan-007-sys@users.noreply.github.com>
+Date:   Sat Jun 20 10:53:19 2026 +0530
+
+    Add files via upload
+
+[1mdiff --git a/telecaller/telecaller-dashboard.html b/telecaller/telecaller-dashboard.html[m
+[1mindex c1bb51a..a5e96bf 100644[m
+[1m--- a/telecaller/telecaller-dashboard.html[m
+[1m+++ b/telecaller/telecaller-dashboard.html[m
+[36m@@ -826,11 +826,21 @@[m [mlet currentOrderName = null;[m
+ let customFromDate = null;[m
+ let customToDate = null;[m
+ [m
+[32m+[m[32mlet ordersData = {};[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32mconsole.log("Firebase Listener Created");[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32monValue([m[41m[m
+[32m+[m[32m  ref(db, `Telecallers/${emailKey}/Orders`),[m[41m[m
+[32m+[m[32m  (snap) => {[m[41m[m
+[32m+[m[32m    ordersData = snap.val() || {};[m[41m[m
+[32m+[m[32m    renderOrders();[m[41m[m
+[32m+[m[32m  }[m[41m[m
+[32m+[m[32m);[m[41m[m
+ [m
+ /* ================= RENDER ================= */[m
+ async function renderOrders() {[m
+[31m-  onValue(ref(db, `Telecallers/${emailKey}/Orders`), (snap) => {[m
+[31m-    const data = snap.val() || {};[m
+[32m+[m[32m    const data = ordersData;[m[41m[m
+ [m
+   // 🔥 1️⃣ Keep only latest order per phone[m
+   const latestOrdersMap = {};[m
+[36m@@ -996,7 +1006,6 @@[m [mdocument.getElementById("ordersTotal").innerText = `Total: ${allOrders.length}`;[m
+   });[m
+ [m
+   ordersContainer.innerHTML = html;[m
+[31m-});[m
+ }[m
+ [m
+ function getStatusColor(status) {[m
