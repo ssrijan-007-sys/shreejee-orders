@@ -57,11 +57,10 @@ function startTracking(awb) {
         if (status === "OUT FOR DELIVERY") {
           alreadyAlerted[awb] = false;
           }
-        const prev = lastStatus[awb];
+        
 
         console.log({
             awb,
-            prev,
             status
         });
 
@@ -77,8 +76,6 @@ function startTracking(awb) {
     showFailureModal(awb, tracking);
 
 }
-        lastStatus[awb] = status;
-
         if (
             status === "DELIVERED" ||
             status === "RTO" ||
