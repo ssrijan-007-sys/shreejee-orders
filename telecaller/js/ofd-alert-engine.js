@@ -5,9 +5,9 @@ if (!authUser) throw new Error("No auth");
 
 const emailKey = authUser.email.replace(/[.@]/g, "_");
 
-const lastStatus = {};
-const alertShownForUpdate = {};
+
 const trackingListeners = {};
+const alreadyAlerted = {};
 
 let warningAudio = null;
 
@@ -54,6 +54,9 @@ function startTracking(awb) {
         if (!tracking) return;
 
         const status = tracking.status;
+        if (status === "OUT FOR DELIVERY") {
+          alreadyAlerted[awb] = false;
+          }
         const prev = lastStatus[awb];
 
         console.log({
@@ -63,24 +66,17 @@ function startTracking(awb) {
         });
 
         if (
-            status === "PICKED" &&
-            alertShownForUpdate[awb] !== tracking.updatedAt
-        ) {
+    status === "PICKED" &&
+    !alreadyAlerted[awb]
+) {
 
-            const updateKey = tracking.updatedAt;
+    alreadyAlerted[awb] = true;
 
-            if (alertShownForUpdate[awb] !== updateKey) {
+    console.log("🚨 OFD FAILURE", awb);
 
-                alertShownForUpdate[awb] = updateKey;
+    showFailureModal(awb, tracking);
 
-                console.log("🚨 OFD FAILURE", awb);
-
-                showFailureModal(awb, tracking);
-
-            }
-
-        }
-
+}
         lastStatus[awb] = status;
 
         if (
@@ -90,6 +86,7 @@ function startTracking(awb) {
         ) {
 
             delete trackingListeners[awb];
+            delete alreadyAlerted[awb];
 
         }
 
