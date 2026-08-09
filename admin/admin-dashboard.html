@@ -500,16 +500,30 @@ document.getElementById("totalRevenue").innerText =
 
           <div class="flex justify-between">
             <div class="font-semibold">
-              ${o.name}
-              ${o.isBlackBox ? `
-                <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
-                  BLACK BOX
-                </span>
-              ` : ""}
-              <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
-                 Qty: ${o.quantity || 1}
-              </span>
-            </div>
+  ${o.name}
+
+  ${o.isBlackBox ? `
+    <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
+      BLACK BOX
+    </span>
+  ` : ""}
+
+  ${o.isWellness ? `
+    <span class="bg-purple-600 text-white px-2 py-0.5 rounded ml-1 text-xs">
+      WELLNESS
+    </span>
+  ` : ""}
+
+  ${o.isGas ? `
+    <span class="bg-orange-500 text-white px-2 py-0.5 rounded ml-1 text-xs">
+      GAS
+    </span>
+  ` : ""}
+
+  <span class="bg-black text-white px-2 py-0.5 rounded ml-1 text-xs">
+    Qty: ${o.quantity || 1}
+  </span>
+</div>
             <div class="text-sm text-gray-400">${o.telecaller}</div>
           </div>
 

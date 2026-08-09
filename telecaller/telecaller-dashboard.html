@@ -289,7 +289,9 @@ async function saveOrder(assignAwb) {
         quantity: v("quantity") || 1,
         paymentMode: paymentMode.value,
         status: "PENDING",
-        isBlackBox: document.getElementById("isBlackBox").checked
+        isBlackBox: document.getElementById("isBlackBox").checked,
+        isWellness: document.getElementById("isWellness").checked,
+        isGas: document.getElementById("isGas").checked
       };
 
       if (oldPhone !== newPhone) {
@@ -343,8 +345,11 @@ async function saveOrder(assignAwb) {
       createdAt: Date.now(),
       trackable: !!awb,
       lastTrackedAt: 0,
-      isBlackBox: document.getElementById("isBlackBox").checked
+      isBlackBox: document.getElementById("isBlackBox").checked,
+      isWellness: document.getElementById("isWellness").checked,
+      isGas: document.getElementById("isGas").checked
     };
+
 
     await set(
       ref(db, `Telecallers/${emailKey}/Orders/${phoneKey}/${orderId}`),
@@ -1066,7 +1071,6 @@ renderOrders();
 function openModal(){ orderModal.classList.remove("hidden"); }
 function closeModal(){  editingOrder = null;  orderModal.classList.add("hidden");}
 function logout(){ localStorage.clear(); location.href="../index.html"; }
-function goToCallingDashboard() {location.href = "../telecaller Calling portal/telecaller-dashboard.html";}
 
 
 
@@ -1471,6 +1475,8 @@ function clearOrderModal() {
   document.getElementById("pinStatus").textContent = "";
   document.getElementById("awbBtn").disabled = true;
   document.getElementById("isBlackBox").checked = false;
+  document.getElementById("isWellness").checked = false;
+  document.getElementById("isGas").checked = false;
 }
 
 function showCustomAlert(message) {
@@ -1612,6 +1618,8 @@ async function editOrder(phone, orderId) {
   document.getElementById("orderAmount").value = order.amount || "";
   document.getElementById("paymentMode").value = order.paymentMode || "COD";
   document.getElementById("isBlackBox").checked = order.isBlackBox || false;
+  document.getElementById("isWellness").checked = order.isWellness || false;
+  document.getElementById("isGas").checked = order.isGas || false;
 
   // Disable AWB button (since it's edit)
   document.getElementById("awbBtn").disabled = true;
@@ -1644,6 +1652,8 @@ async function reorder(phone, orderId) {
   document.getElementById("orderAmount").value = order.amount || "";
   document.getElementById("paymentMode").value = order.paymentMode || "COD";
   document.getElementById("isBlackBox").checked = order.isBlackBox || false;
+  document.getElementById("isWellness").checked = order.isWellness || false;
+  document.getElementById("isGas").checked = order.isGas || false;
 
   // 🔥 Enable AWB button (VERY IMPORTANT)
   document.getElementById("awbBtn").disabled = false;
@@ -1747,12 +1757,6 @@ saveDetailsBtn.addEventListener("click", async () => {
   <div>👤 <span id="telecallerName"></span></div>
 
   <div class="flex gap-3">
-    <button 
-      onclick="goToCallingDashboard()" 
-      class="bg-indigo-600 hover:bg-indigo-700 px-4 py-1 rounded shadow">
-      📞 Calling Dashboard
-    </button>
-
     <button onclick="logout()" class="bg-red-500 px-4 py-1 rounded">
       Logout
     </button>
@@ -1848,10 +1852,24 @@ saveDetailsBtn.addEventListener("click", async () => {
       <option>COD</option>
       <option>Prepaid</option>
     </select>
-    <div class="flex items-center gap-2 mt-2">
-      <input type="checkbox" id="isBlackBox" class="w-4 h-4">
-      <label for="isBlackBox" class="text-sm">Black Box</label>
-    </div>
+    <div class="flex items-center gap-4 mt-2 flex-wrap">
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isBlackBox" class="w-4 h-4">
+    <label for="isBlackBox" class="text-sm">Black Box</label>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isWellness" class="w-4 h-4">
+    <label for="isWellness" class="text-sm">Wellness</label>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isGas" class="w-4 h-4">
+    <label for="isGas" class="text-sm">Gas</label>
+  </div>
+
+</div>
     <input id="scheduleDate" type="date" class="w-full p-2" placeholder="Schedule Date (optional)">
     <div class="flex gap-2">
       <button onclick="saveOrder(false)" class="bg-gray-600 px-4 py-2 text-white">Save</button>

@@ -323,7 +323,9 @@ window.reorderCustomer = async (phone, orderId) => {
   document.getElementById("quantity").value = order.quantity || 1;
   document.getElementById("orderAmount").value = order.amount || "";
   document.getElementById("paymentMode").value = order.paymentMode || "COD";
-
+  document.getElementById("isBlackBox").checked = order.isBlackBox || false;
+  document.getElementById("isWellness").checked = order.isWellness || false;
+  document.getElementById("isGas").checked = order.isGas || false;
   document.getElementById("orderModal").classList.remove("hidden");
 };
 
@@ -352,6 +354,10 @@ window.onload = loadReorders;
 
 
 function closeOrderModal(){
+  document.getElementById("isBlackBox").checked = false;
+  document.getElementById("isWellness").checked = false;
+  document.getElementById("isGas").checked = false;
+
   document.getElementById("orderModal").classList.add("hidden");
 }
 window.closeOrderModal = closeOrderModal;
@@ -418,7 +424,10 @@ async function saveOrder(assignAwb){
     status,
     createdAt: Date.now(),
     trackable: !!awb,
-    lastTrackedAt: 0
+    lastTrackedAt: 0,
+    isBlackBox: document.getElementById("isBlackBox").checked,
+    isWellness: document.getElementById("isWellness").checked,
+    isGas: document.getElementById("isGas").checked
   };
 
   await set(
@@ -641,6 +650,25 @@ class="absolute top-2 right-2 text-red-600 font-bold">✕</button>
   <option>COD</option>
   <option>Prepaid</option>
 </select>
+
+<div class="flex gap-4 mt-2 flex-wrap">
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isBlackBox" class="w-4 h-4">
+    <label for="isBlackBox">Black Box</label>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isWellness" class="w-4 h-4">
+    <label for="isWellness">Wellness</label>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <input type="checkbox" id="isGas" class="w-4 h-4">
+    <label for="isGas">Gas</label>
+  </div>
+
+</div>
 
 <div class="flex gap-2 mt-2">
   <button onclick="saveOrder(false)" class="bg-gray-600 text-white px-4 py-2">
