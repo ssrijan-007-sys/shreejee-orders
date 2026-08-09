@@ -96,6 +96,20 @@ if (!authUser || authUser.role !== "telecaller") {
 }
 const emailKey = authUser.email.replace(/[.@]/g, "_");
 
+function getCallingEmailKey(authUser) {
+  const name = (authUser.name || "").toLowerCase();
+
+  // 🔥 SPECIAL CASES
+  if (name === "shalu") {
+    return "shaluthakur805999@gmailcom"; // custom key
+  }
+
+  // ✅ DEFAULT LOGIC
+  return authUser.email.replace(/\./g, "_");
+}
+
+const callingEmailKey = getCallingEmailKey(authUser);
+
 
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("telecallerName").innerText = authUser.name;
@@ -551,17 +565,7 @@ async function openViewModal(phone) {
   }).join("");
 
 
-  function getCallingEmailKey(authUser) {
-  const name = (authUser.name || "").toLowerCase();
-
-  // 🔥 SPECIAL CASES
-  if (name === "shalu") {
-    return "shaluthakur805999@gmailcom"; // custom key
-  }
-
-  // ✅ DEFAULT LOGIC
-  return authUser.email.replace(/\./g, "_");
-}
+  
 
 
 // ================= FETCH CALLING REMARKS =================
@@ -605,6 +609,101 @@ const viewDetailRemarksBtn = document.getElementById("viewDetailRemarksBtn");
 
 const saveDetailsBtn = document.getElementById("saveDetailsBtn");
 
+// ================= OPEN REMARKS MODAL =================
+
+const remarksModal = document.getElementById("remarksModal");
+const remarksModalContent = document.getElementById("remarksModalContent");
+const closeRemarksModal = document.getElementById("closeRemarksModal");
+
+viewDetailRemarksBtn.addEventListener("click", async () => {
+
+  if (!currentOrderPhone) {
+    console.warn("No customer phone selected");
+    return;
+  }
+
+  // Open modal immediately
+  remarksModal.classList.remove("hidden");
+
+  // Show loading
+  remarksModalContent.innerHTML = `
+    <div class="text-gray-500 text-center py-6">
+      Loading remarks...
+    </div>
+  `;
+
+  try {
+
+    console.log("Loading remarks modal for:", currentOrderPhone);
+    console.log("Calling Email Key:", callingEmailKey);
+
+    const remarksSnap = await get2(
+      ref2(
+        callingDB,
+        `Telecallers/${callingEmailKey}/Ordered/${currentOrderPhone}/Remarks`
+      )
+    );
+
+    // No remarks
+    if (!remarksSnap.exists()) {
+
+      remarksModalContent.innerHTML = `
+        <div class="text-gray-500 text-center py-8">
+          📭 No remarks found
+        </div>
+      `;
+
+      return;
+    }
+
+    const remarksData = remarksSnap.val();
+
+    const remarksList = Object.values(remarksData)
+      .sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    remarksModalContent.innerHTML = remarksList.map(r => `
+      <div class="bg-white p-3 rounded-lg border shadow-sm">
+
+        <div class="text-gray-900">
+          ${r.text || ""}
+        </div>
+
+        <div class="text-xs text-gray-500 mt-1">
+          ${r.time ? new Date(r.time).toLocaleString() : ""}
+        </div>
+
+      </div>
+    `).join("");
+
+  } catch (err) {
+
+    console.error("Failed to load remarks:", err);
+
+    remarksModalContent.innerHTML = `
+      <div class="text-red-500 text-center py-6">
+        ❌ Failed to load remarks
+      </div>
+    `;
+  }
+});
+
+
+// ================= CLOSE REMARKS MODAL =================
+
+closeRemarksModal.addEventListener("click", () => {
+  remarksModal.classList.add("hidden");
+});
+
+
+// Close when clicking outside popup
+remarksModal.addEventListener("click", (e) => {
+
+  if (e.target === remarksModal) {
+    remarksModal.classList.add("hidden");
+  }
+
+});
+
 function calculateBMI() {
 
   const weight = parseFloat(detailWeight.value);
@@ -647,11 +746,14 @@ detailHeightInch.addEventListener("input", calculateBMI);
 
 callingRemarksDiv.innerHTML = `<div class="text-gray-500">Loading remarks...</div>`;
 
-// 🔑 email format for calling dashboard
-const callingEmailKey = getCallingEmailKey(authUser);
+
 
 // 📱 phone number
-const number = c.phone;
+// 📱 Use the currently selected customer's phone
+const number = currentOrderPhone;
+
+console.log("Loading remarks for:", number);
+console.log("Calling Email Key:", callingEmailKey);
 
 // 🔥 IMPORTANT: use callingDB + ref2 + get2
 const remarksSnap = await get2(
@@ -1069,7 +1171,7 @@ renderOrders();
 
 /* ================= UI ================= */
 function openModal(){ orderModal.classList.remove("hidden"); }
-function closeModal(){  editingOrder = null;  orderModal.classList.add("hidden");}
+function closeModal(){  editingOrder = null; clearOrderModal(); orderModal.classList.add("hidden");}
 function logout(){ localStorage.clear(); location.href="../index.html"; }
 
 
@@ -2165,7 +2267,46 @@ class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justi
   </div>
 
 </div>
+<!-- ================= REMARKS MODAL ================= -->
+<div id="remarksModal"
+  class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
 
+  <div
+    class="bg-white text-black rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-5 py-4">
+
+      <button
+        id="closeRemarksModal"
+        type="button"
+        class="absolute top-3 right-4 text-2xl font-bold hover:opacity-80">
+        &times;
+      </button>
+
+      <h2 class="text-xl font-bold">
+        📞 Calling Remarks
+      </h2>
+
+      <p class="text-sm opacity-80 mt-1">
+        Customer conversation remarks
+      </p>
+
+    </div>
+
+    <!-- Remarks -->
+    <div
+      id="remarksModalContent"
+      class="p-4 max-h-[60vh] overflow-y-auto space-y-2 bg-gray-50">
+
+      <div class="text-gray-500 text-center py-6">
+        Loading remarks...
+      </div>
+
+    </div>
+
+  </div>
+</div>
 
 </body>
 </html>
